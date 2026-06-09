@@ -1,0 +1,6 @@
+@FamilyQuestWebApi_HostAddress = http://localhost:5213
+
+GET {{FamilyQuestWebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
