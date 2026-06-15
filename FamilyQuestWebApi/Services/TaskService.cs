@@ -1,4 +1,4 @@
-using FamilyQuestWebApi.Data;
+﻿using FamilyQuestWebApi.Data;
 using FamilyQuestWebApi.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 using TaskStatus = FamilyQuestWebApi.Models.Entities.TaskStatus;
@@ -41,7 +41,8 @@ namespace FamilyQuestWebApi.Services
                     task.Points,
                     task.DueDate,
                     task.Status,
-                    task.ChildId))
+                    task.ChildId,
+                    task.IconKey))
                 .ToListAsync();
         }
 
@@ -90,6 +91,7 @@ namespace FamilyQuestWebApi.Services
             {
                 Name = request.Name,
                 Description = request.Description,
+                IconKey = string.IsNullOrWhiteSpace(request.IconKey) ? "notebook" : request.IconKey.Trim(),
                 Points = request.Points,
                 DueDate = request.DueDate,
                 Status = TaskStatus.Assigned,
@@ -157,7 +159,8 @@ namespace FamilyQuestWebApi.Services
 
         private static TaskResponse ToResponse(TaskItem task)
         {
-            return new TaskResponse(task.Id, task.Name, task.Description, task.Points, task.DueDate, task.Status, task.ChildId);
+            return new TaskResponse(task.Id, task.Name, task.Description, task.Points, task.DueDate, task.Status, task.ChildId, task.IconKey);
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using FamilyQuestWebApi.Data;
+﻿using FamilyQuestWebApi.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace FamilyQuestWebApi.Services
@@ -37,7 +37,9 @@ namespace FamilyQuestWebApi.Services
                     user.Email,
                     user.Role,
                     user.CreatedAt,
-                    user.IsActive));
+                    user.IsActive,
+                    user.AvatarKey));
         }
     }
 }
+

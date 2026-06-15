@@ -1,4 +1,4 @@
-using FamilyQuestWebApi.Data;
+﻿using FamilyQuestWebApi.Data;
 using FamilyQuestWebApi.Models.Entities;
 
 namespace FamilyQuestWebApi.Services
@@ -21,7 +21,8 @@ namespace FamilyQuestWebApi.Services
                 Name = request.Name,
                 Email = request.Email,
                 PasswordHash = _passwordHasher.HashPassword(request.Password),
-                Role = request.Role
+                Role = request.Role,
+                AvatarKey = string.IsNullOrWhiteSpace(request.AvatarKey) ? "mum-one" : request.AvatarKey.Trim()
             };
 
             _dbContext.Users.Add(user);
@@ -33,7 +34,9 @@ namespace FamilyQuestWebApi.Services
                 user.Email,
                 user.Role,
                 user.CreatedAt,
-                user.IsActive);
+                user.IsActive,
+                user.AvatarKey);
         }
     }
 }
+

@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using FamilyQuestWebApi.Models.Entities;
 
 namespace FamilyQuestWebApi.Services
@@ -15,6 +15,9 @@ namespace FamilyQuestWebApi.Services
         [Required]
         public string Password { get; set; } = null!;
 
+        [MaxLength(50)]
+        public string? AvatarKey { get; set; }
+
         [Required]
         [EnumDataType(typeof(UserRole))]
         public UserRole Role { get; set; }
@@ -26,5 +29,7 @@ namespace FamilyQuestWebApi.Services
         string? Email,
         UserRole Role,
         DateTime CreatedAt,
-        bool IsActive);
+        bool IsActive,
+        string AvatarKey);
 }
+
