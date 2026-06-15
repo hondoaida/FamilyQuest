@@ -15,6 +15,10 @@ namespace FamilyQuestWebApi.Models.Entities
         public string? Description { get; set; }
 
         [Required]
+        [MaxLength(50)]
+        public string IconKey { get; set; } = "notebook";
+
+        [Required]
         public int Points { get; set; }
 
         [Required]

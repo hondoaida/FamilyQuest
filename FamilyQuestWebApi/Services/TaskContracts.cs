@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using TaskStatus = FamilyQuestWebApi.Models.Entities.TaskStatus;
 
 namespace FamilyQuestWebApi.Services
@@ -11,6 +11,9 @@ namespace FamilyQuestWebApi.Services
 
         [MaxLength(200)]
         public string? Description { get; set; }
+
+        [MaxLength(50)]
+        public string? IconKey { get; set; }
 
         [Required]
         public int Points { get; set; }
@@ -40,5 +43,7 @@ namespace FamilyQuestWebApi.Services
         int Points,
         DateTime DueDate,
         TaskStatus Status,
-        int ChildId);
+        int ChildId,
+        string IconKey);
 }
+

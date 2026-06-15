@@ -1,4 +1,4 @@
-using FamilyQuestWebApi.Data;
+﻿using FamilyQuestWebApi.Data;
 using FamilyQuestWebApi.Models.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -32,13 +32,17 @@ namespace FamilyQuestWebApi.Services
                 .Select(parentChild => new ParentChildResponse(
                     parentChild.Id,
                     parentChild.ParentId,
-                    parentChild.ChildId))
+                    parentChild.ChildId,
+                    parentChild.Child.Name,
+                    parentChild.Child.Email))
                 .ToListAsync();
         }
 
         public async Task<ServiceResult<ParentChildResponse>> GetParentChildAsync(int id)
         {
-            var parentChild = await _dbContext.ParentChildren.FindAsync(id);
+            var parentChild = await _dbContext.ParentChildren
+                .Include(parentChild => parentChild.Child)
+                .FirstOrDefaultAsync(parentChild => parentChild.Id == id);
 
             if (parentChild == null)
             {
@@ -109,7 +113,7 @@ namespace FamilyQuestWebApi.Services
             _dbContext.ParentChildren.Add(parentChildRelationship);
             await _dbContext.SaveChangesAsync();
 
-            return ServiceResult<ParentChildResponse>.Success(ToResponse(parentChildRelationship));
+            return ServiceResult<ParentChildResponse>.Success(ToResponse(parentChildRelationship, child));
         }
 
         private bool CanAccess(int parentId, int childId)
@@ -121,7 +125,13 @@ namespace FamilyQuestWebApi.Services
 
         private static ParentChildResponse ToResponse(global::ParentChild parentChild)
         {
-            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId);
+            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, parentChild.Child.Name, parentChild.Child.Email);
+        }
+
+        private static ParentChildResponse ToResponse(global::ParentChild parentChild, User child)
+        {
+            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, child.Name, child.Email);
         }
     }
 }
+

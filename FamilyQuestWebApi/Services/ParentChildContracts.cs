@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace FamilyQuestWebApi.Services
 {
@@ -13,5 +13,7 @@ namespace FamilyQuestWebApi.Services
     public record ParentChildResponse(
         int Id,
         int ParentId,
-        int ChildId);
+        int ChildId,
+        string ChildName,
+        string? ChildEmail);
 }

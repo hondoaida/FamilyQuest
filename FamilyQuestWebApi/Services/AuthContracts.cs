@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using FamilyQuestWebApi.Models.Entities;
 
 namespace FamilyQuestWebApi.Services
@@ -24,9 +24,11 @@ namespace FamilyQuestWebApi.Services
         string? Email,
         UserRole Role,
         DateTime CreatedAt,
-        bool IsActive);
+        bool IsActive,
+        string AvatarKey);
 
     public record TokenResponse(
         string Token,
         DateTime ExpiresAt);
 }
+

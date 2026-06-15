@@ -25,6 +25,10 @@ namespace FamilyQuestWebApi.Models.Entities
 
         public bool IsActive { get; set; } = true;
 
+        [Required]
+        [MaxLength(50)]
+        public string AvatarKey { get; set; } = "mum-one";
+
         // Navigacijske kolekcije
         public ICollection<TaskItem> Tasks { get; set; } = new List<TaskItem>();
 
