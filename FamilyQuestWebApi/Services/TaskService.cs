@@ -42,7 +42,9 @@ namespace FamilyQuestWebApi.Services
                     task.DueDate,
                     task.Status,
                     task.ChildId,
-                    task.IconKey))
+                    task.IconKey,
+                    task.CompletionImageDataUrl,
+                    task.SubmittedAt))
                 .ToListAsync();
         }
 
@@ -124,6 +126,20 @@ namespace FamilyQuestWebApi.Services
                 {
                     return ServiceResult<bool>.Failure(ServiceErrorType.BadRequest, "Child can only mark a task as pending approval.");
                 }
+
+                if (task.Status != TaskStatus.Assigned && task.Status != TaskStatus.Rejected)
+                {
+                    return ServiceResult<bool>.Failure(ServiceErrorType.BadRequest, "Only assigned or rejected tasks can be submitted.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.CompletionImageDataUrl))
+                {
+                    return ServiceResult<bool>.Failure(ServiceErrorType.BadRequest, "Task completion image is required.");
+                }
+
+                task.CompletionImageDataUrl = request.CompletionImageDataUrl;
+                task.SubmittedAt = DateTime.Now;
+                await NotifyParentsAboutTaskSubmissionAsync(task);
             }
             else if (_currentUserService.Role == UserRole.Parent)
             {
@@ -159,7 +175,41 @@ namespace FamilyQuestWebApi.Services
 
         private static TaskResponse ToResponse(TaskItem task)
         {
-            return new TaskResponse(task.Id, task.Name, task.Description, task.Points, task.DueDate, task.Status, task.ChildId, task.IconKey);
+            return new TaskResponse(
+                task.Id,
+                task.Name,
+                task.Description,
+                task.Points,
+                task.DueDate,
+                task.Status,
+                task.ChildId,
+                task.IconKey,
+                task.CompletionImageDataUrl,
+                task.SubmittedAt);
+        }
+
+        private async Task NotifyParentsAboutTaskSubmissionAsync(TaskItem task)
+        {
+            var childName = await _dbContext.Users
+                .Where(user => user.Id == task.ChildId)
+                .Select(user => user.Name)
+                .FirstOrDefaultAsync() ?? "Dijete";
+
+            var parentIds = await _dbContext.ParentChildren
+                .Where(parentChild => parentChild.ChildId == task.ChildId)
+                .Select(parentChild => parentChild.ParentId)
+                .ToListAsync();
+
+            foreach (var parentId in parentIds)
+            {
+                _dbContext.Messages.Add(new global::Message
+                {
+                    SenderId = task.ChildId,
+                    ReceiverId = parentId,
+                    Content = $"{childName} je poslao/la zadatak \"{task.Name}\" na odobrenje.",
+                    SentAt = DateTime.Now
+                });
+            }
         }
     }
 }

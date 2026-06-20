@@ -61,6 +61,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IRewardService, RewardService>();
 builder.Services.AddScoped<IRewardRequestService, RewardRequestService>();
+builder.Services.AddScoped<IRewardSuggestionService, RewardSuggestionService>();
 builder.Services.AddScoped<IParentChildService, ParentChildService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<IMeService, MeService>();
@@ -84,10 +85,15 @@ if (app.Environment.IsDevelopment())
     });
 
     using var seedScope = app.Services.CreateScope();
+    var dbContext = seedScope.ServiceProvider.GetRequiredService<FamilyQuestDbContext>();
+    await dbContext.Database.MigrateAsync();
     await DevelopmentDataSeeder.SeedAsync(seedScope.ServiceProvider);
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

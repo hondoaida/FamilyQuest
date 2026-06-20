@@ -25,7 +25,8 @@ namespace FamilyQuestWebApi.Data
                     Name = "Demo Parent",
                     Email = "parent@familyquest.test",
                     PasswordHash = passwordHasher.HashPassword("Password123!"),
-                    Role = UserRole.Parent
+                    Role = UserRole.Parent,
+                    AvatarKey = "mum-one"
                 };
 
                 var child = new User
@@ -33,7 +34,8 @@ namespace FamilyQuestWebApi.Data
                     Name = "Demo Child",
                     Email = "child@familyquest.test",
                     PasswordHash = passwordHasher.HashPassword("Password123!"),
-                    Role = UserRole.Child
+                    Role = UserRole.Child,
+                    AvatarKey = "boy-one"
                 };
 
                 var admin = new User
@@ -41,7 +43,8 @@ namespace FamilyQuestWebApi.Data
                     Name = "Demo Admin",
                     Email = "admin@familyquest.test",
                     PasswordHash = passwordHasher.HashPassword("Password123!"),
-                    Role = UserRole.Admin
+                    Role = UserRole.Admin,
+                    AvatarKey = "dad-one"
                 };
 
                 dbContext.Users.AddRange(parent, child, admin);
@@ -77,7 +80,9 @@ namespace FamilyQuestWebApi.Data
                 {
                     Name = "Movie night",
                     Description = "Pick a family movie for Friday night.",
+                    IconKey = "gamepad",
                     RequiredPoints = 50,
+                    DueDate = DateTime.Now.AddDays(7),
                     ChildId = child.Id
                 });
 

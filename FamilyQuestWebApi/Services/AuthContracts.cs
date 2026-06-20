@@ -5,9 +5,11 @@ namespace FamilyQuestWebApi.Services
 {
     public class LoginRequest
     {
-        [Required]
         [MaxLength(100)]
-        public string Email { get; set; } = null!;
+        public string? Email { get; set; }
+
+        [MaxLength(100)]
+        public string? Identifier { get; set; }
 
         [Required]
         public string Password { get; set; } = null!;

@@ -34,6 +34,8 @@ namespace FamilyQuestWebApi.Services
         [Required]
         [EnumDataType(typeof(TaskStatus))]
         public TaskStatus Status { get; set; }
+
+        public string? CompletionImageDataUrl { get; set; }
     }
 
     public record TaskResponse(
@@ -44,6 +46,8 @@ namespace FamilyQuestWebApi.Services
         DateTime DueDate,
         TaskStatus Status,
         int ChildId,
-        string IconKey);
+        string IconKey,
+        string? CompletionImageDataUrl,
+        DateTime? SubmittedAt);
 }
 

@@ -23,6 +23,24 @@ namespace FamilyQuestWebApi.Controllers
             return user == null ? NotFound() : Ok(user);
         }
 
+        [HttpPatch]
+        public async Task<ActionResult<UserResponse>> UpdateMe(UpdateCurrentUserRequest request)
+        {
+            var result = await _meService.UpdateCurrentUserAsync(request);
+
+            if (result.IsSuccess)
+            {
+                return Ok(result.Value);
+            }
+
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.ErrorMessage),
+                ServiceErrorType.Conflict => Conflict(result.ErrorMessage),
+                _ => BadRequest(result.ErrorMessage)
+            };
+        }
+
         [HttpGet("tasks")]
         public async Task<ActionResult<IEnumerable<TaskResponse>>> GetMyTasks()
         {
@@ -35,6 +53,25 @@ namespace FamilyQuestWebApi.Controllers
         {
             var rewards = await _meService.GetRewardsAsync();
             return Ok(rewards);
+        }
+
+        [HttpPost("reward-suggestions")]
+        public async Task<IActionResult> SuggestReward(SuggestRewardRequest request)
+        {
+            var result = await _meService.SuggestRewardAsync(request);
+
+            if (result.IsSuccess)
+            {
+                return NoContent();
+            }
+
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.ErrorMessage),
+                ServiceErrorType.Forbidden => StatusCode(StatusCodes.Status403Forbidden, result.ErrorMessage),
+                ServiceErrorType.Conflict => Conflict(result.ErrorMessage),
+                _ => BadRequest(result.ErrorMessage)
+            };
         }
 
         [HttpGet("messages")]

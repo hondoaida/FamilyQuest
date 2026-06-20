@@ -18,8 +18,17 @@ namespace FamilyQuestWebApi.Services
 
         public async Task<LoginResponse?> LoginAsync(LoginRequest request)
         {
+            var identifier = (request.Identifier ?? request.Email)?.Trim();
+
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                return null;
+            }
+
             var user = await _dbContext.Users
-                .FirstOrDefaultAsync(user => user.Email == request.Email && user.IsActive);
+                .FirstOrDefaultAsync(user =>
+                    user.IsActive
+                    && (user.Email == identifier || user.Name == identifier));
 
             if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
             {

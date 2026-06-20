@@ -8,6 +8,8 @@ namespace FamilyQuestWebApi.Services
 
         Task<ServiceResult<RewardResponse>> CreateRewardAsync(CreateRewardRequest request);
 
+        Task<ServiceResult<RewardResponse>> UpdateRewardAsync(int id, UpdateRewardRequest request);
+
         Task<ServiceResult<bool>> UpdateRewardActiveStatusAsync(int id, UpdateRewardActiveStatusRequest request);
     }
 }

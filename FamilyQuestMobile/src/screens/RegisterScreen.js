@@ -123,7 +123,7 @@ export function RegisterScreen({ onNavigateToLogin }) {
 
           <View style={styles.avatarBlock}>
             <Text style={styles.avatarTitle}>Odaberite profilnu ikonu</Text>
-            <View style={styles.avatarOptionsGrid}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarOptionsRow}>
               {parentAvatarOptions.map((avatar) => {
                 const isSelected = selectedAvatar.key === avatar.key;
 
@@ -139,7 +139,7 @@ export function RegisterScreen({ onNavigateToLogin }) {
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
 
           <InputField
@@ -237,8 +237,8 @@ const styles = StyleSheet.create({
   description: { color: '#46536c', fontSize: 16, lineHeight: 24, textAlign: 'center', marginTop: 10, marginBottom: 20 },
   avatarBlock: { marginTop: -2, marginBottom: 16 },
   avatarTitle: { color: '#052461', fontSize: 15, fontWeight: '800', marginBottom: 10 },
-  avatarOptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
-  avatarOption: { width: '31%', minHeight: 98, borderRadius: 14, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', padding: 8, backgroundColor: '#ffffff' },
+  avatarOptionsRow: { gap: 10, paddingRight: 2 },
+  avatarOption: { width: 78, minHeight: 96, borderRadius: 14, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: '#ffffff' },
   avatarOptionSelected: { borderColor: '#0065ff', backgroundColor: '#eef5ff' },
   avatarImage: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#dfe5ff' },
   avatarLabel: { color: '#536079', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 7 },

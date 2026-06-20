@@ -27,6 +27,10 @@ namespace FamilyQuestWebApi.Models.Entities
         [Required]
         public TaskStatus Status { get; set; }
 
+        public string? CompletionImageDataUrl { get; set; }
+
+        public DateTime? SubmittedAt { get; set; }
+
         // FK prema User (dijete)
         public int ChildId { get; set; }
 

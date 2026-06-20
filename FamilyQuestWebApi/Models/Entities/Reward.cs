@@ -14,8 +14,14 @@ namespace FamilyQuestWebApi.Models.Entities
         [MaxLength(200)]
         public string? Description { get; set; }
 
+        [MaxLength(50)]
+        public string IconKey { get; set; } = "gamepad";
+
         [Required]
         public int RequiredPoints { get; set; }
+
+        [Required]
+        public DateTime DueDate { get; set; }
 
         public bool IsActive { get; set; } = true;
 

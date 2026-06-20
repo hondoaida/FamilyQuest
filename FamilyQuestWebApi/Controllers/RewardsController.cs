@@ -44,6 +44,14 @@ namespace FamilyQuestWebApi.Controllers
             return Created($"/api/rewards/{result.Value!.Id}", result.Value);
         }
 
+        [HttpPut("{id:int}")]
+        [Authorize(Roles = "Parent,Admin")]
+        public async Task<ActionResult<RewardResponse>> UpdateReward(int id, UpdateRewardRequest request)
+        {
+            var result = await _rewardService.UpdateRewardAsync(id, request);
+            return ToActionResult(result);
+        }
+
         [HttpPut("{id:int}/active")]
         [Authorize(Roles = "Parent,Admin")]
         public async Task<IActionResult> UpdateRewardActiveStatus(int id, UpdateRewardActiveStatusRequest request)

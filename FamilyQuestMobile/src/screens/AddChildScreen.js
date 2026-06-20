@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleShe
 import { InputField } from '../components/InputField';
 import { createChildUser } from '../services/authService';
 import { createParentChildRelationship } from '../services/parentChildService';
+import { childAvatarOptions } from '../utils/childAvatars';
 
 const icons = {
   chevronRight: require('../../assets/home-icons/chevron-right.png'),
@@ -17,9 +18,16 @@ export function AddChildScreen({ token, onBack }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState(childAvatarOptions[0]);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    }
+  };
 
   const handleSubmit = async () => {
     const trimmedIdentifier = childIdentifier.trim();
@@ -50,6 +58,7 @@ export function AddChildScreen({ token, onBack }) {
       const createdChild = await createChildUser({
         identifier: trimmedIdentifier,
         password,
+        avatarKey: selectedAvatar.key,
       });
 
       await createParentChildRelationship({
@@ -60,6 +69,7 @@ export function AddChildScreen({ token, onBack }) {
       setChildIdentifier('');
       setPassword('');
       setConfirmPassword('');
+      setSelectedAvatar(childAvatarOptions[0]);
       setStatusType('success');
       setStatusMessage(`Dijete ${createdChild.name} je uspješno dodano i povezano sa roditeljem.`);
     } catch (error) {
@@ -75,7 +85,7 @@ export function AddChildScreen({ token, onBack }) {
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={onBack} hitSlop={12}>
+          <Pressable style={styles.backButton} onPress={handleBack} hitSlop={16}>
             <Image source={icons.chevronRight} style={styles.backIcon} resizeMode="contain" />
           </Pressable>
           <Text style={styles.headerTitle}>Dodaj dijete</Text>
@@ -114,6 +124,26 @@ export function AddChildScreen({ token, onBack }) {
             onRightActionPress={() => setShowConfirmPassword((current) => !current)}
           />
 
+          <View style={styles.avatarBlock}>
+            <Text style={styles.avatarTitle}>Odaberite ikonu djeteta</Text>
+            <View style={styles.avatarOptionsGrid}>
+              {childAvatarOptions.map((avatar) => {
+                const isSelected = selectedAvatar.key === avatar.key;
+                return (
+                  <Pressable
+                    key={avatar.key}
+                    style={[styles.avatarOption, isSelected && styles.avatarOptionSelected]}
+                    onPress={() => setSelectedAvatar(avatar)}
+                    disabled={isSubmitting}
+                  >
+                    <Image source={avatar.source} style={styles.avatarImage} resizeMode="cover" />
+                    <Text style={[styles.avatarLabel, isSelected && styles.avatarLabelSelected]}>{avatar.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={styles.infoBox}>
             <View style={styles.shieldIcon}>
               <Image source={icons.profile} style={styles.shieldInnerIcon} resizeMode="contain" />
@@ -128,7 +158,7 @@ export function AddChildScreen({ token, onBack }) {
           ) : null}
 
           <View style={styles.actionsRow}>
-            <Pressable style={styles.secondaryButton} onPress={onBack} disabled={isSubmitting}>
+            <Pressable style={styles.secondaryButton} onPress={handleBack} disabled={isSubmitting}>
               <Text style={styles.secondaryButtonText}>Odustani</Text>
             </Pressable>
             <Pressable style={[styles.primaryButton, isSubmitting && styles.disabledButton]} onPress={handleSubmit} disabled={isSubmitting}>
@@ -145,13 +175,21 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#ffffff' },
   scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 36, backgroundColor: '#ffffff' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
-  backButton: { width: 42, height: 42, alignItems: 'flex-start', justifyContent: 'center' },
+  backButton: { width: 52, height: 52, alignItems: 'flex-start', justifyContent: 'center' },
   backIcon: { width: 26, height: 26, tintColor: '#052b78', transform: [{ rotate: '180deg' }] },
   headerTitle: { color: '#071e60', fontSize: 27, fontWeight: '800', textAlign: 'center' },
-  headerSpacer: { width: 42 },
+  headerSpacer: { width: 52 },
   heroImage: { width: 255, height: 195, alignSelf: 'center', marginTop: 2, marginBottom: 22 },
   description: { color: '#4c5877', fontSize: 19, lineHeight: 30, textAlign: 'center', marginBottom: 44, paddingHorizontal: 20 },
   formArea: { width: '100%' },
+  avatarBlock: { marginTop: -2, marginBottom: 18 },
+  avatarTitle: { color: '#052461', fontSize: 15, fontWeight: '800', marginBottom: 10 },
+  avatarOptionsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
+  avatarOption: { width: '23%', minHeight: 94, borderRadius: 14, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', padding: 7, backgroundColor: '#ffffff' },
+  avatarOptionSelected: { borderColor: '#0065ff', backgroundColor: '#eef5ff' },
+  avatarImage: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#dfe5ff' },
+  avatarLabel: { color: '#536079', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 6 },
+  avatarLabelSelected: { color: '#0065ff' },
   infoBox: {
     minHeight: 92,
     borderWidth: 1,

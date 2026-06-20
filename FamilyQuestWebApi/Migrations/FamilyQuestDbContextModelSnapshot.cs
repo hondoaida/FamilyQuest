@@ -37,6 +37,14 @@ namespace FamilyQuestWebApi.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IconKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -55,6 +63,59 @@ namespace FamilyQuestWebApi.Migrations
                     b.ToTable("Rewards");
                 });
 
+            modelBuilder.Entity("FamilyQuestWebApi.Models.Entities.RewardSuggestion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChildId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IconKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ParentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RewardId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RequiredPoints")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SuggestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChildId");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("RewardId");
+
+                    b.ToTable("RewardSuggestions");
+                });
+
             modelBuilder.Entity("FamilyQuestWebApi.Models.Entities.TaskItem", b =>
                 {
                     b.Property<int>("Id")
@@ -65,6 +126,9 @@ namespace FamilyQuestWebApi.Migrations
 
                     b.Property<int>("ChildId")
                         .HasColumnType("int");
+
+                    b.Property<string>("CompletionImageDataUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(200)
@@ -88,6 +152,9 @@ namespace FamilyQuestWebApi.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
@@ -294,6 +361,32 @@ namespace FamilyQuestWebApi.Migrations
                         .IsRequired();
 
                     b.Navigation("Child");
+
+                    b.Navigation("Reward");
+                });
+
+            modelBuilder.Entity("FamilyQuestWebApi.Models.Entities.RewardSuggestion", b =>
+                {
+                    b.HasOne("FamilyQuestWebApi.Models.Entities.User", "Child")
+                        .WithMany()
+                        .HasForeignKey("ChildId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("FamilyQuestWebApi.Models.Entities.User", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("FamilyQuestWebApi.Models.Entities.Reward", "Reward")
+                        .WithMany()
+                        .HasForeignKey("RewardId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Child");
+
+                    b.Navigation("Parent");
 
                     b.Navigation("Reward");
                 });

@@ -71,12 +71,12 @@ export async function createTask({ token, task }) {
   return { ...createdTask, taskIcon: createdTask.iconKey ?? task.taskIcon };
 }
 
-export async function updateTaskStatus({ token, taskId, status }) {
+export async function updateTaskStatus({ token, taskId, status, completionImageDataUrl }) {
   await requestTasks({
     token,
     path: `/api/tasks/${taskId}/status`,
     method: 'PUT',
-    body: { status },
+    body: { status, completionImageDataUrl },
     errorMessage: 'Ažuriranje statusa zadatka nije uspjelo.',
   });
 }
