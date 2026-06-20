@@ -37,7 +37,9 @@ namespace FamilyQuestWebApi.Services
                     reward.Id,
                     reward.Name,
                     reward.Description,
+                    reward.IconKey,
                     reward.RequiredPoints,
+                    reward.DueDate,
                     reward.IsActive,
                     reward.ChildId))
                 .ToListAsync();
@@ -93,11 +95,49 @@ namespace FamilyQuestWebApi.Services
             {
                 Name = request.Name,
                 Description = request.Description,
+                IconKey = string.IsNullOrWhiteSpace(request.IconKey) ? "gamepad" : request.IconKey.Trim(),
                 RequiredPoints = request.RequiredPoints,
+                DueDate = request.DueDate,
                 ChildId = request.ChildId
             };
 
             _dbContext.Rewards.Add(reward);
+            await _dbContext.SaveChangesAsync();
+
+            return ServiceResult<RewardResponse>.Success(ToResponse(reward));
+        }
+
+        public async Task<ServiceResult<RewardResponse>> UpdateRewardAsync(int id, UpdateRewardRequest request)
+        {
+            if (_currentUserService.Role != UserRole.Parent && _currentUserService.Role != UserRole.Admin)
+            {
+                return ServiceResult<RewardResponse>.Failure(ServiceErrorType.Forbidden, "Only parents can update rewards.");
+            }
+
+            var reward = await _dbContext.Rewards.FindAsync(id);
+
+            if (reward == null)
+            {
+                return ServiceResult<RewardResponse>.Failure(ServiceErrorType.NotFound);
+            }
+
+            if (_currentUserService.Role == UserRole.Parent && !await IsParentOfChildAsync(_currentUserService.UserId, reward.ChildId))
+            {
+                return ServiceResult<RewardResponse>.Failure(ServiceErrorType.Forbidden, "You can update only rewards assigned to your own child.");
+            }
+
+            if (request.RequiredPoints < 0 || request.RequiredPoints > 5000)
+            {
+                return ServiceResult<RewardResponse>.Failure(ServiceErrorType.BadRequest, "Reward points must be between 0 and 5000.");
+            }
+
+            reward.Name = request.Name.Trim();
+            reward.Description = request.Description;
+            reward.IconKey = string.IsNullOrWhiteSpace(request.IconKey) ? "gamepad" : request.IconKey.Trim();
+            reward.RequiredPoints = request.RequiredPoints;
+            reward.DueDate = request.DueDate;
+            reward.IsActive = request.IsActive;
+
             await _dbContext.SaveChangesAsync();
 
             return ServiceResult<RewardResponse>.Success(ToResponse(reward));
@@ -143,7 +183,7 @@ namespace FamilyQuestWebApi.Services
 
         private static RewardResponse ToResponse(Reward reward)
         {
-            return new RewardResponse(reward.Id, reward.Name, reward.Description, reward.RequiredPoints, reward.IsActive, reward.ChildId);
+            return new RewardResponse(reward.Id, reward.Name, reward.Description, reward.IconKey, reward.RequiredPoints, reward.DueDate, reward.IsActive, reward.ChildId);
         }
     }
 }

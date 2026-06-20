@@ -4,9 +4,13 @@ namespace FamilyQuestWebApi.Services
     {
         Task<UserResponse?> GetCurrentUserAsync();
 
+        Task<ServiceResult<UserResponse>> UpdateCurrentUserAsync(UpdateCurrentUserRequest request);
+
         Task<IEnumerable<TaskResponse>> GetTasksAsync();
 
         Task<IEnumerable<RewardResponse>> GetRewardsAsync();
+
+        Task<ServiceResult<bool>> SuggestRewardAsync(SuggestRewardRequest request);
 
         Task<IEnumerable<MessageResponse>> GetMessagesAsync();
 

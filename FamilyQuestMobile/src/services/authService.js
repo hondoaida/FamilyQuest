@@ -51,14 +51,17 @@ async function createUser({ name, email, password, role, avatarKey, errorMessage
   });
 }
 
-export async function loginUser({ email, password }) {
+export async function loginUser({ identifier, email, password }) {
+  const loginIdentifier = identifier ?? email;
+
   return requestJson({
     path: '/api/auth/login',
     body: {
-      email,
+      email: loginIdentifier,
+      identifier: loginIdentifier,
       password,
     },
-    errorMessage: 'Prijava nije uspjela. Provjerite e-mail i lozinku.',
+    errorMessage: 'Prijava nije uspjela. Provjerite korisnicko ime/e-mail i lozinku.',
   });
 }
 
@@ -73,7 +76,7 @@ export async function registerUser({ firstName, lastName, email, password, avata
   });
 }
 
-export async function createChildUser({ identifier, password }) {
+export async function createChildUser({ identifier, password, avatarKey }) {
   const trimmedIdentifier = identifier.trim();
   const isEmail = trimmedIdentifier.includes('@');
   const name = isEmail ? trimmedIdentifier.split('@')[0] : trimmedIdentifier;
@@ -83,6 +86,7 @@ export async function createChildUser({ identifier, password }) {
     email: isEmail ? trimmedIdentifier : null,
     password,
     role: USER_ROLES.child,
+    avatarKey,
     errorMessage: 'Dodavanje djeteta nije uspjelo.',
   });
 }

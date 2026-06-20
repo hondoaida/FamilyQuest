@@ -23,6 +23,19 @@ namespace FamilyQuestWebApi.Services
         public UserRole Role { get; set; }
     }
 
+    public class UpdateCurrentUserRequest
+    {
+        [MaxLength(100)]
+        public string? Email { get; set; }
+
+        [MaxLength(50)]
+        public string? AvatarKey { get; set; }
+
+        public string? CurrentPassword { get; set; }
+
+        public string? NewPassword { get; set; }
+    }
+
     public record UserResponse(
         int Id,
         string Name,

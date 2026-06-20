@@ -19,6 +19,8 @@ namespace FamilyQuestWebApi.Data
 
         public DbSet<RewardRequest> RewardRequests { get; set; }
 
+        public DbSet<RewardSuggestion> RewardSuggestions { get; set; }
+
         public DbSet<Message> Messages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -59,6 +61,24 @@ namespace FamilyQuestWebApi.Data
                 .HasOne(rr => rr.Reward)
                 .WithMany()
                 .HasForeignKey(rr => rr.RewardId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<RewardSuggestion>()
+                .HasOne(suggestion => suggestion.Child)
+                .WithMany()
+                .HasForeignKey(suggestion => suggestion.ChildId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<RewardSuggestion>()
+                .HasOne(suggestion => suggestion.Parent)
+                .WithMany()
+                .HasForeignKey(suggestion => suggestion.ParentId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<RewardSuggestion>()
+                .HasOne(suggestion => suggestion.Reward)
+                .WithMany()
+                .HasForeignKey(suggestion => suggestion.RewardId)
                 .OnDelete(DeleteBehavior.NoAction);
         }
     }

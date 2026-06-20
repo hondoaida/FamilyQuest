@@ -6,17 +6,17 @@ import { InputField } from '../components/InputField';
 import { loginUser } from '../services/authService';
 
 export function LoginScreen({ onNavigateToRegister, onLoginSuccess }) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async () => {
-    const trimmedEmail = email.trim();
+    const trimmedIdentifier = identifier.trim();
 
-    if (!trimmedEmail || !password) {
-      setStatusMessage('Molimo unesite e-mail adresu i lozinku.');
+    if (!trimmedIdentifier || !password) {
+      setStatusMessage('Molimo unesite korisnicko ime/e-mail i lozinku.');
       return;
     }
 
@@ -24,7 +24,7 @@ export function LoginScreen({ onNavigateToRegister, onLoginSuccess }) {
     setStatusMessage('');
 
     try {
-      const loginResponse = await loginUser({ email: trimmedEmail, password });
+      const loginResponse = await loginUser({ identifier: trimmedIdentifier, password });
       onLoginSuccess(loginResponse);
     } catch (error) {
       setStatusMessage(error.message || 'Prijava nije uspjela.');
@@ -49,13 +49,13 @@ export function LoginScreen({ onNavigateToRegister, onLoginSuccess }) {
 
           <View style={styles.formArea}>
             <InputField
-              label="E-mail adresa"
-              placeholder="Unesite e-mail adresu"
+              label="Korisnicko ime ili e-mail"
+              placeholder="Unesite korisnicko ime ili e-mail"
               icon="mail"
               keyboardType="email-address"
               autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
+              value={identifier}
+              onChangeText={setIdentifier}
             />
             <InputField
               label="Lozinka"

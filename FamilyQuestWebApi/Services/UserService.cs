@@ -22,7 +22,9 @@ namespace FamilyQuestWebApi.Services
                 Email = request.Email,
                 PasswordHash = _passwordHasher.HashPassword(request.Password),
                 Role = request.Role,
-                AvatarKey = string.IsNullOrWhiteSpace(request.AvatarKey) ? "mum-one" : request.AvatarKey.Trim()
+                AvatarKey = string.IsNullOrWhiteSpace(request.AvatarKey)
+                    ? request.Role == UserRole.Child ? "boy-one" : "mum-one"
+                    : request.AvatarKey.Trim()
             };
 
             _dbContext.Users.Add(user);

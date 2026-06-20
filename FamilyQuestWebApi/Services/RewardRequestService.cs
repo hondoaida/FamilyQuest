@@ -78,6 +78,26 @@ namespace FamilyQuestWebApi.Services
                 return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Forbidden, "You can request only your own rewards.");
             }
 
+            var approvedPoints = await _dbContext.Tasks
+                .Where(task => task.ChildId == _currentUserService.UserId && task.Status == FamilyQuestWebApi.Models.Entities.TaskStatus.Approved)
+                .SumAsync(task => task.Points);
+
+            if (approvedPoints < reward.RequiredPoints)
+            {
+                return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.BadRequest, "You do not have enough points for this reward.");
+            }
+
+            var hasActiveRequest = await _dbContext.RewardRequests
+                .AnyAsync(existingRequest =>
+                    existingRequest.RewardId == reward.Id
+                    && existingRequest.ChildId == _currentUserService.UserId
+                    && (existingRequest.Status == global::RewardRequestStatus.Pending || existingRequest.Status == global::RewardRequestStatus.Approved));
+
+            if (hasActiveRequest)
+            {
+                return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Conflict, "Reward has already been requested.");
+            }
+
             var rewardRequest = new global::RewardRequest
             {
                 RewardId = request.RewardId,

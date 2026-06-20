@@ -34,7 +34,8 @@ namespace FamilyQuestWebApi.Services
                     parentChild.ParentId,
                     parentChild.ChildId,
                     parentChild.Child.Name,
-                    parentChild.Child.Email))
+                    parentChild.Child.Email,
+                    parentChild.Child.AvatarKey))
                 .ToListAsync();
         }
 
@@ -125,12 +126,12 @@ namespace FamilyQuestWebApi.Services
 
         private static ParentChildResponse ToResponse(global::ParentChild parentChild)
         {
-            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, parentChild.Child.Name, parentChild.Child.Email);
+            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, parentChild.Child.Name, parentChild.Child.Email, parentChild.Child.AvatarKey);
         }
 
         private static ParentChildResponse ToResponse(global::ParentChild parentChild, User child)
         {
-            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, child.Name, child.Email);
+            return new ParentChildResponse(parentChild.Id, parentChild.ParentId, parentChild.ChildId, child.Name, child.Email, child.AvatarKey);
         }
     }
 }

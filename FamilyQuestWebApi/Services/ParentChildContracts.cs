@@ -15,5 +15,6 @@ namespace FamilyQuestWebApi.Services
         int ParentId,
         int ChildId,
         string ChildName,
-        string? ChildEmail);
+        string? ChildEmail,
+        string ChildAvatarKey);
 }

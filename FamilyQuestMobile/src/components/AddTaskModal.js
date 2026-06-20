@@ -10,13 +10,18 @@ const icons = {
 
 const taskIconOptions = [
   { key: 'dishes', label: 'Suđe', source: require('../../assets/taskt-item/dishes.png'), color: '#dff4ff' },
+  { key: 'sort-dishes', label: 'Složi suđe', source: require('../../assets/taskt-item/sort-dishes.png'), color: '#e9f8ff' },
   { key: 'bed', label: 'Soba', source: require('../../assets/taskt-item/bed.png'), color: '#efe5ff' },
   { key: 'laundry', label: 'Veš', source: require('../../assets/taskt-item/laundry.png'), color: '#e9f9e6' },
   { key: 'trash', label: 'Smeće', source: require('../../assets/taskt-item/trash.png'), color: '#e5f4ff' },
   { key: 'toys', label: 'Igračke', source: require('../../assets/taskt-item/toys.png'), color: '#fff1c8' },
   { key: 'notebook', label: 'Učenje', source: require('../../assets/taskt-item/notebook.png'), color: '#ffe5d3' },
+  { key: 'book', label: 'Knjiga', source: require('../../assets/taskt-item/book.png'), color: '#e8f2ff' },
   { key: 'vacum', label: 'Usisavanje', source: require('../../assets/taskt-item/vacum.png'), color: '#f0ecff' },
+  { key: 'dust', label: 'Prašina', source: require('../../assets/taskt-item/dust.png'), color: '#fff0e4' },
   { key: 'gardening', label: 'Bašta', source: require('../../assets/taskt-item/gardening.png'), color: '#e7f8d9' },
+  { key: 'trening', label: 'Trening', source: require('../../assets/taskt-item/trening.png'), color: '#e6fbf4' },
+  { key: 'task', label: 'Zadatak', source: require('../../assets/taskt-item/task.png'), color: '#edf1ff' },
 ];
 
 const timeOptions = [
@@ -92,7 +97,7 @@ export function AddTaskModal({ visible, child, onClose, onSubmit }) {
 
     try {
       await onSubmit({
-        childId: child.childId,
+        childId: child.childId ?? child.userId ?? child.id,
         name: trimmedName,
         points: parsedPoints,
         dueDate: dueDate.toISOString(),
