@@ -1,6 +1,6 @@
 ﻿import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { InputField } from '../components/InputField';
 import { loginUser } from '../services/authService';
@@ -16,7 +16,7 @@ export function LoginScreen({ onNavigateToRegister, onLoginSuccess }) {
     const trimmedIdentifier = identifier.trim();
 
     if (!trimmedIdentifier || !password) {
-      setStatusMessage('Molimo unesite korisnicko ime/e-mail i lozinku.');
+      setStatusMessage('Molimo unesite korisničko ime/e-mail i šifru.');
       return;
     }
 
@@ -36,65 +36,72 @@ export function LoginScreen({ onNavigateToRegister, onLoginSuccess }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
-        <View style={styles.card}>
-          <Image source={require('../../assets/register-hero.png')} style={styles.heroImage} resizeMode="contain" />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.card}>
+            <Image source={require('../../assets/register-hero.png')} style={styles.heroImage} resizeMode="contain" />
 
-          <Text style={styles.title}>Prijava</Text>
-          <Text style={styles.description}>Dobrodošli nazad! Prijavite se kako biste nastavili koristiti aplikaciju.</Text>
+            <Text style={styles.title}>Prijava</Text>
+            <Text style={styles.description}>Dobrodošli nazad! Prijavite se kako biste nastavili koristiti aplikaciju.</Text>
 
-          <View style={styles.formArea}>
-            <InputField
-              label="Korisnicko ime ili e-mail"
-              placeholder="Unesite korisnicko ime ili e-mail"
-              icon="mail"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={identifier}
-              onChangeText={setIdentifier}
-            />
-            <InputField
-              label="Lozinka"
-              placeholder="Unesite lozinku"
-              icon="lock"
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-              onRightActionPress={() => setShowPassword((current) => !current)}
-            />
+            <View style={styles.formArea}>
+              <InputField
+                label="Korisničko ime ili e-mail"
+                placeholder="Unesite korisničko ime ili e-mail"
+                icon="mail"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={identifier}
+                onChangeText={setIdentifier}
+              />
+              <InputField
+                label="Šifra"
+                placeholder="Unesite šifru"
+                icon="lock"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+                onRightActionPress={() => setShowPassword((current) => !current)}
+              />
 
-            <Pressable style={styles.forgotPasswordRow}>
-              <Text style={styles.linkText}>Zaboravili ste lozinku?</Text>
-            </Pressable>
+              <Pressable style={styles.forgotPasswordRow}>
+                <Text style={styles.linkText}>Zaboravili ste lozinku?</Text>
+              </Pressable>
 
-            {statusMessage ? (
-              <View style={styles.statusBox}>
-                <Text style={styles.statusText}>{statusMessage}</Text>
-              </View>
-            ) : null}
+              {statusMessage ? (
+                <View style={styles.statusBox}>
+                  <Text style={styles.statusText}>{statusMessage}</Text>
+                </View>
+              ) : null}
 
-            <Pressable style={[styles.primaryButton, isSubmitting && styles.disabledButton]} onPress={handleLogin} disabled={isSubmitting}>
-              {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Prijavi se</Text>}
-            </Pressable>
+              <Pressable style={[styles.primaryButton, isSubmitting && styles.disabledButton]} onPress={handleLogin} disabled={isSubmitting}>
+                {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Prijavi se</Text>}
+              </Pressable>
 
-            <Pressable style={styles.registerRow} onPress={onNavigateToRegister}>
-              <Text style={styles.registerText}>Nemate nalog? </Text>
-              <Text style={styles.registerLink}>Registruj se</Text>
-            </Pressable>
+              <Pressable style={styles.registerRow} onPress={onNavigateToRegister}>
+                <Text style={styles.registerText}>Nemate nalog? </Text>
+                <Text style={styles.registerLink}>Registruj se</Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#edf5ff' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 18, paddingVertical: 24 },
+  keyboardAvoidingView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 96 },
   card: {
     width: '100%',
     maxWidth: 430,

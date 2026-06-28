@@ -1,6 +1,6 @@
 ﻿import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { InputField } from '../components/InputField';
 import { registerUser } from '../services/authService';
@@ -22,6 +22,7 @@ export function RegisterScreen({ onNavigateToLogin }) {
   const [selectedAvatar, setSelectedAvatar] = useState(parentAvatarOptions[0]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,119 +106,131 @@ export function RegisterScreen({ onNavigateToLogin }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
-        <View style={styles.card}>
-          <Image source={require('../../assets/register-hero.png')} style={styles.heroImage} resizeMode="contain" />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.card}>
+            <Image source={require('../../assets/register-hero.png')} style={styles.heroImage} resizeMode="contain" />
 
-          <Text style={styles.title}>Kreirajte svoj nalog</Text>
-          <Text style={styles.description}>
-            Registrujte se kako biste koristili sve funkcionalnosti aplikacije. Dobrodošli nazad!
-          </Text>
-
-          <InputField label="Ime" placeholder="Unesite ime" icon="person" value={firstName} onChangeText={setFirstName} />
-          <InputField label="Prezime" placeholder="Unesite prezime" icon="person" value={lastName} onChangeText={setLastName} />
-
-          <View style={styles.avatarBlock}>
-            <Text style={styles.avatarTitle}>Odaberite profilnu ikonu</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarOptionsRow}>
-              {parentAvatarOptions.map((avatar) => {
-                const isSelected = selectedAvatar.key === avatar.key;
-
-                return (
-                  <Pressable
-                    key={avatar.key}
-                    style={[styles.avatarOption, isSelected && styles.avatarOptionSelected]}
-                    onPress={() => setSelectedAvatar(avatar)}
-                    disabled={isSubmitting}
-                  >
-                    <Image source={avatar.source} style={styles.avatarImage} resizeMode="cover" />
-                    <Text style={[styles.avatarLabel, isSelected && styles.avatarLabelSelected]}>{avatar.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <InputField
-            label="E-mail adresa"
-            placeholder="Unesite e-mail adresu"
-            icon="mail"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <InputField
-            label="Lozinka"
-            placeholder="Unesite lozinku"
-            icon="lock"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={setPassword}
-            onRightActionPress={() => setShowPassword((current) => !current)}
-          />
-
-          <View style={styles.passwordRules}>
-            <Text style={styles.rulesTitle}>Lozinka mora sadržati:</Text>
-            {passwordRules.map((rule) => (
-              <View key={rule.label} style={styles.ruleRow}>
-                <Text style={[styles.ruleCheck, rule.isValid && styles.ruleCheckValid]}>✓</Text>
-                <Text style={styles.ruleText}>{rule.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          <InputField
-            label="Potvrda lozinke"
-            placeholder="Ponovite lozinku"
-            icon="lock"
-            secureTextEntry={!showConfirmPassword}
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            onRightActionPress={() => setShowConfirmPassword((current) => !current)}
-          />
-
-          <Pressable style={styles.termsRow} onPress={() => setAcceptedTerms((current) => !current)}>
-            <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-              {acceptedTerms ? <Text style={styles.checkboxMark}>✓</Text> : null}
-            </View>
-            <Text style={styles.termsText}>
-              Prihvatam <Text style={styles.linkText}>uvjete korištenja</Text> i{' '}
-              <Text style={styles.linkText}>politiku privatnosti.</Text>
+            <Text style={styles.title}>Kreirajte svoj nalog</Text>
+            <Text style={styles.description}>
+              Registrujte se kako biste koristili sve funkcionalnosti aplikacije. Dobrodošli nazad!
             </Text>
-          </Pressable>
 
-          {statusMessage ? (
-            <View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>
-              <Text style={styles.statusText}>{statusMessage}</Text>
+            <InputField label="Ime" placeholder="Unesite ime" icon="person" value={firstName} onChangeText={setFirstName} />
+            <InputField label="Prezime" placeholder="Unesite prezime" icon="person" value={lastName} onChangeText={setLastName} />
+
+            <View style={styles.avatarBlock}>
+              <Text style={styles.avatarTitle}>Odaberite profilnu ikonu</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.avatarOptionsRow}>
+                {parentAvatarOptions.map((avatar) => {
+                  const isSelected = selectedAvatar.key === avatar.key;
+
+                  return (
+                    <Pressable
+                      key={avatar.key}
+                      style={[styles.avatarOption, isSelected && styles.avatarOptionSelected]}
+                      onPress={() => setSelectedAvatar(avatar)}
+                      disabled={isSubmitting}
+                    >
+                      <Image source={avatar.source} style={styles.avatarImage} resizeMode="cover" />
+                      <Text style={[styles.avatarLabel, isSelected && styles.avatarLabelSelected]}>{avatar.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
-          ) : null}
 
-          <Pressable style={[styles.primaryButton, isSubmitting && styles.disabledButton]} onPress={handleRegister} disabled={isSubmitting}>
-            {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Registruj se</Text>}
-          </Pressable>
+            <InputField
+              label="E-mail adresa"
+              placeholder="Unesite e-mail adresu"
+              icon="mail"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <InputField
+              label="Lozinka"
+              placeholder="Unesite lozinku"
+              icon="lock"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
+              onRightActionPress={() => setShowPassword((current) => !current)}
+            />
 
-          <Pressable style={styles.secondaryButton} onPress={resetForm}>
-            <Text style={styles.secondaryButtonText}>Odustani</Text>
-          </Pressable>
+            {isPasswordFocused ? (
+              <View style={styles.passwordRules}>
+                <View style={styles.passwordRulesPointer} />
+                <Text style={styles.rulesTitle}>Lozinka mora sadržati:</Text>
+                {passwordRules.map((rule) => (
+                  <View key={rule.label} style={styles.ruleRow}>
+                    <Text style={[styles.ruleCheck, rule.isValid && styles.ruleCheckValid]}>✓</Text>
+                    <Text style={styles.ruleText}>{rule.label}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
-          <Pressable style={styles.loginRow} onPress={navigateToLogin} hitSlop={12}>
-            <Text style={styles.loginText}>Već imate nalog? </Text>
-            <Text style={styles.loginLink} onPress={navigateToLogin}>Prijavite se</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+            <InputField
+              label="Potvrda lozinke"
+              placeholder="Ponovite lozinku"
+              icon="lock"
+              secureTextEntry={!showConfirmPassword}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              onRightActionPress={() => setShowConfirmPassword((current) => !current)}
+            />
+
+            <Pressable style={styles.termsRow} onPress={() => setAcceptedTerms((current) => !current)}>
+              <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+                {acceptedTerms ? <Text style={styles.checkboxMark}>✓</Text> : null}
+              </View>
+              <Text style={styles.termsText}>
+                Prihvatam <Text style={styles.linkText}>uvjete korištenja</Text> i{' '}
+                <Text style={styles.linkText}>politiku privatnosti.</Text>
+              </Text>
+            </Pressable>
+
+            {statusMessage ? (
+              <View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>
+                <Text style={styles.statusText}>{statusMessage}</Text>
+              </View>
+            ) : null}
+
+            <Pressable style={[styles.primaryButton, isSubmitting && styles.disabledButton]} onPress={handleRegister} disabled={isSubmitting}>
+              {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Registruj se</Text>}
+            </Pressable>
+
+            <Pressable style={styles.secondaryButton} onPress={resetForm}>
+              <Text style={styles.secondaryButtonText}>Odustani</Text>
+            </Pressable>
+
+            <Pressable style={styles.loginRow} onPress={navigateToLogin} hitSlop={12}>
+              <Text style={styles.loginText}>Već imate nalog? </Text>
+              <Text style={styles.loginLink} onPress={navigateToLogin}>Prijavite se</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#edf5ff' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 18, paddingVertical: 24 },
+  keyboardAvoidingView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 108 },
   card: {
     width: '100%',
     maxWidth: 430,
@@ -237,18 +250,19 @@ const styles = StyleSheet.create({
   description: { color: '#46536c', fontSize: 16, lineHeight: 24, textAlign: 'center', marginTop: 10, marginBottom: 20 },
   avatarBlock: { marginTop: -2, marginBottom: 16 },
   avatarTitle: { color: '#052461', fontSize: 15, fontWeight: '800', marginBottom: 10 },
-  avatarOptionsRow: { gap: 10, paddingRight: 2 },
-  avatarOption: { width: 78, minHeight: 96, borderRadius: 14, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: '#ffffff' },
+  avatarOptionsRow: { gap: 8, paddingRight: 2 },
+  avatarOption: { width: 66, minHeight: 80, borderRadius: 12, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 4, backgroundColor: '#ffffff' },
   avatarOptionSelected: { borderColor: '#0065ff', backgroundColor: '#eef5ff' },
-  avatarImage: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#dfe5ff' },
-  avatarLabel: { color: '#536079', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 7 },
+  avatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#dfe5ff' },
+  avatarLabel: { color: '#536079', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 5 },
   avatarLabelSelected: { color: '#0065ff' },
-  passwordRules: { backgroundColor: '#eef5ff', borderRadius: 11, paddingHorizontal: 16, paddingVertical: 14, marginTop: -2, marginBottom: 16 },
-  rulesTitle: { color: '#052461', fontSize: 15, marginBottom: 8 },
-  ruleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  ruleCheck: { color: '#169c55', fontSize: 18, fontWeight: '800', width: 28 },
+  passwordRules: { position: 'relative', backgroundColor: '#eef5ff', borderRadius: 11, borderWidth: 1, borderColor: '#cfe1ff', paddingHorizontal: 14, paddingVertical: 12, marginTop: -6, marginBottom: 16 },
+  passwordRulesPointer: { position: 'absolute', top: -7, left: 24, width: 13, height: 13, backgroundColor: '#eef5ff', borderLeftWidth: 1, borderTopWidth: 1, borderColor: '#cfe1ff', transform: [{ rotate: '45deg' }] },
+  rulesTitle: { color: '#052461', fontSize: 14, fontWeight: '700', marginBottom: 5 },
+  ruleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  ruleCheck: { color: '#93a0b6', fontSize: 16, fontWeight: '800', width: 24 },
   ruleCheckValid: { color: '#169c55' },
-  ruleText: { color: '#082a68', fontSize: 15 },
+  ruleText: { color: '#082a68', fontSize: 14 },
   termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 16 },
   checkbox: { width: 25, height: 25, borderWidth: 2, borderColor: '#8b95a7', borderRadius: 5, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   checkboxChecked: { borderColor: '#052b78', backgroundColor: '#052b78' },

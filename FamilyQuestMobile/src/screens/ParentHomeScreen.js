@@ -1,5 +1,6 @@
-﻿import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getMyChildren } from '../services/childrenService';
@@ -7,6 +8,7 @@ import { getMyMessages, sendMessage } from '../services/messageService';
 import { getRewardRequests, REWARD_REQUEST_STATUSES, updateRewardRequestStatus } from '../services/rewardRequestService';
 import { getRewards } from '../services/rewardService';
 import { getRewardSuggestions, REWARD_SUGGESTION_STATUSES, updateRewardSuggestionStatus } from '../services/rewardSuggestionService';
+import { createChatConnection } from '../services/realtimeService';
 import { getTasks, TASK_STATUSES, updateTaskStatus } from '../services/taskService';
 import { getChildAvatarSource } from '../utils/childAvatars';
 import { getParentAvatarSource } from '../utils/parentAvatars';
@@ -29,6 +31,8 @@ const icons = {
   chevronRight: require('../../assets/home-icons/chevron-right.png'),
   taskGraphic: require('../../assets/taskt-item/task.png'),
 };
+
+const READ_NOTIFICATIONS_STORAGE_PREFIX = 'familyquest:parent:read-notifications';
 
 const rewardIconSources = {
   gamepad: { image: require('../../assets/reward-items/gamepad.png'), color: '#eee4ff' },
@@ -106,6 +110,61 @@ export function ParentHomeScreen({
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
   const [isTaskStatsVisible, setIsTaskStatsVisible] = useState(false);
   const [isRewardStatsVisible, setIsRewardStatsVisible] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState([]);
+  const currentUserId = user?.id ?? user?.userId;
+  const readNotificationsStorageKey = `${READ_NOTIFICATIONS_STORAGE_PREFIX}:${currentUserId ?? 'anonymous'}`;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadReadNotifications = async () => {
+      if (!currentUserId) {
+        setReadNotificationIds([]);
+        return;
+      }
+
+      try {
+        const storedIds = await AsyncStorage.getItem(readNotificationsStorageKey);
+
+        if (isMounted) {
+          setReadNotificationIds(storedIds ? JSON.parse(storedIds) : []);
+        }
+      } catch {
+        if (isMounted) {
+          setReadNotificationIds([]);
+        }
+      }
+    };
+
+    loadReadNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, readNotificationsStorageKey]);
+
+  const refreshMessages = async ({ silent = false } = {}) => {
+    if (!token) {
+      return;
+    }
+
+    if (!silent) {
+      setIsLoadingMessages(true);
+    }
+
+    setMessagesError('');
+
+    try {
+      const response = await getMyMessages({ token });
+      setMessages(response ?? []);
+    } catch (error) {
+      setMessagesError(error.message || 'Ucitavanje poruka nije uspjelo.');
+    } finally {
+      if (!silent) {
+        setIsLoadingMessages(false);
+      }
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -126,7 +185,7 @@ export function ParentHomeScreen({
         }
       } catch (error) {
         if (isMounted) {
-          setChildrenError(error.message || 'Učitavanje djece nije uspjelo.');
+          setChildrenError(error.message || 'Ucitavanje djece nije uspjelo.');
         }
       } finally {
         if (isMounted) {
@@ -150,37 +209,35 @@ export function ParentHomeScreen({
   }, [openMessagesOnStart, onMessagesOpened]);
 
   useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
+    const connection = createChatConnection(token);
     let isMounted = true;
 
-    const loadMessages = async () => {
-      if (!token) {
+    connection.on('MessageReceived', (message) => {
+      if (!isMounted) {
         return;
       }
 
-      setIsLoadingMessages(true);
-      setMessagesError('');
+      setMessages((currentMessages) => (
+        currentMessages.some((currentMessage) => sameId(currentMessage.id, message.id))
+          ? currentMessages
+          : [...currentMessages, message]
+      ));
+    });
 
-      try {
-        const response = await getMyMessages({ token });
-        if (isMounted) {
-          setMessages(response);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setMessagesError(error.message || 'Ucitavanje poruka nije uspjelo.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingMessages(false);
-        }
-      }
-    };
-
-    loadMessages();
+    connection.start().catch(() => {});
 
     return () => {
       isMounted = false;
+      connection.stop().catch(() => {});
     };
+  }, [token]);
+
+  useEffect(() => {
+    refreshMessages();
   }, [token]);
 
   useEffect(() => {
@@ -262,7 +319,7 @@ export function ParentHomeScreen({
         }
       } catch (error) {
         if (isMounted) {
-          setTasksError(error.message || 'Učitavanje zadataka nije uspjelo.');
+          setTasksError(error.message || 'Ucitavanje zadataka nije uspjelo.');
         }
       } finally {
         if (isMounted) {
@@ -296,7 +353,7 @@ export function ParentHomeScreen({
         }
       } catch (error) {
         if (isMounted) {
-          setRewardsError(error.message || 'Učitavanje nagrada nije uspjelo.');
+          setRewardsError(error.message || 'Ucitavanje nagrada nije uspjelo.');
         }
       } finally {
         if (isMounted) {
@@ -430,7 +487,7 @@ export function ParentHomeScreen({
       .map((task) => ({
         id: `task-${task.id}`,
         type: 'Zadatak',
-        title: 'Zadatak čeka odobrenje',
+        title: 'Zadatak ceka odobrenje',
         text: `${getChildNameById(children, task.childId)} je poslao/la dokaz za "${task.name}".`,
         date: task.submittedAt ?? task.dueDate,
         actionType: 'task',
@@ -464,6 +521,23 @@ export function ParentHomeScreen({
     return [...taskNotifications, ...suggestionNotifications, ...rewardRequestNotifications]
       .sort((first, second) => new Date(second.date ?? 0) - new Date(first.date ?? 0));
   }, [children, pendingRewardRequests, pendingRewardSuggestions, rewards, tasks]);
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter((notification) => !readNotificationIds.includes(notification.id)),
+    [notifications, readNotificationIds],
+  );
+
+  const markNotificationsAsRead = (notificationIds) => {
+    setReadNotificationIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      notificationIds.forEach((notificationId) => nextIds.add(notificationId));
+      const nextIdsArray = [...nextIds];
+
+      AsyncStorage.setItem(readNotificationsStorageKey, JSON.stringify(nextIdsArray)).catch(() => {});
+
+      return nextIdsArray;
+    });
+  };
 
   const handleReviewRewardSuggestion = async ({ suggestion, status, requiredPoints, dueDate }) => {
     setReviewingSuggestionId(suggestion.id);
@@ -540,6 +614,7 @@ export function ParentHomeScreen({
   };
 
   const handleNotificationPress = (notification) => {
+    markNotificationsAsRead([notification.id]);
     setIsNotificationsVisible(false);
 
     if (notification.actionType === 'task') {
@@ -558,6 +633,7 @@ export function ParentHomeScreen({
   };
 
   const handleOpenMessages = (childId = null) => {
+    refreshMessages({ silent: true });
     setSelectedMessageChildId(childId);
     if (childId) {
       setReadMessageChildIds((currentIds) => (
@@ -596,17 +672,19 @@ export function ParentHomeScreen({
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.headerTextBox}>
-              <Text style={styles.welcomeText}>Dobrodošla nazad,</Text>
-              <Text style={styles.userName}>{user?.name || 'Roditelj'} 👋</Text>
+              <Text style={styles.welcomeText}>Dobrodošli,</Text>
+              <Text style={styles.userName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                {user?.name || 'Roditelj'} ??
+              </Text>
               <Text style={styles.subText}>Drago nam je što ste tu!</Text>
             </View>
 
             <View style={styles.headerActions}>
               <Pressable style={styles.bellButton} onPress={() => setIsNotificationsVisible(true)}>
                 <Icon source={icons.bell} size={32} color="#44506a" />
-                {notifications.length > 0 ? (
+                {unreadNotifications.length > 0 ? (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{notifications.length > 99 ? '99+' : notifications.length}</Text>
+                    <Text style={styles.badgeText}>{unreadNotifications.length > 99 ? '99+' : unreadNotifications.length}</Text>
                   </View>
                 ) : null}
               </Pressable>
@@ -630,7 +708,7 @@ export function ParentHomeScreen({
             <StatsContent
               isLoading={isLoadingTasks}
               error={tasksError}
-              loadingText="Učitavanje statistike zadataka..."
+              loadingText="Ucitavanje statistike zadataka..."
             >
               <StatsPanel>
                 <StatItem image={icons.taskGraphic} value={taskStats.activeTasks} label="Aktivnih zadataka" color="#0065ff" />
@@ -645,7 +723,7 @@ export function ParentHomeScreen({
             <StatsContent
               isLoading={isLoadingRewards}
               error={rewardsError}
-              loadingText="Učitavanje statistike nagrada..."
+              loadingText="Ucitavanje statistike nagrada..."
             >
               <StatsPanel tinted>
                 <StatItem image={rewardIconSources.suitcase.image} value={rewardStats.availableRewards} label="Dostupne nagrade" color="#10a96b" />
@@ -698,7 +776,7 @@ export function ParentHomeScreen({
           stats={[
             { label: 'Ukupno zadataka', value: taskStats.totalTasks, image: icons.taskGraphic },
             { label: 'Dodijeljeni', value: taskStats.assignedTasks, image: icons.taskGraphic },
-            { label: 'Čekaju odobrenje', value: taskStats.pendingTasks, icon: icons.bell },
+            { label: 'Cekaju odobrenje', value: taskStats.pendingTasks, icon: icons.bell },
             { label: 'Završeni', value: taskStats.approvedTasks, icon: icons.checkCircle },
             { label: 'Otkazani', value: taskStats.rejectedTasks, icon: icons.chart },
             { label: 'Osvojeni bodovi', value: taskStats.approvedPoints, icon: icons.star },
@@ -706,7 +784,7 @@ export function ParentHomeScreen({
             { label: 'Najmanje uspješnih', value: formatChildStat(taskStats.leastSuccessfulChild, 'zad.'), icon: icons.user },
           ]}
           highlight={`${taskStats.progress}% ukupni napredak`}
-          hint="Napredak se računa prema broju odobrenih zadataka u odnosu na sve zadatke djece."
+          hint="Napredak se racuna prema broju odobrenih zadataka u odnosu na sve zadatke djece."
         />
         <StatsDetailsModal
           visible={isRewardStatsVisible}
@@ -718,22 +796,23 @@ export function ParentHomeScreen({
             { label: 'Aktivne', value: rewardStats.activeRewards, image: rewardIconSources.suitcase.image },
             { label: 'Neaktivne', value: rewardStats.inactiveRewards, image: rewardIconSources.gamepad.image },
             { label: 'Ostvarive sada', value: rewardStats.affordableRewards, image: rewardIconSources['ice-cream'].image },
-            { label: 'Još zaključane', value: rewardStats.lockedRewards, image: rewardIconSources['travel-car'].image },
+            { label: 'Još zakljucane', value: rewardStats.lockedRewards, image: rewardIconSources['travel-car'].image },
             { label: 'Zatražene', value: rewardStats.pendingRequests, icon: icons.bell },
             { label: 'Osvojene', value: rewardStats.approvedRequests, image: rewardIconSources.picnic.image },
             { label: 'Odbijeni zahtjevi', value: rewardStats.rejectedRequests, icon: icons.chart },
-            { label: 'Predložene čekaju', value: rewardStats.pendingSuggestions, icon: icons.bell },
+            { label: 'Predložene cekaju', value: rewardStats.pendingSuggestions, icon: icons.bell },
             { label: 'Ukupna cijena aktivnih', value: rewardStats.totalRewardCost, icon: icons.chart },
             { label: 'Prosjek bodova', value: rewardStats.averageRewardCost, icon: icons.star },
             { label: 'Najviše osvojenih', value: formatChildStat(rewardStats.mostRewardedChild, 'nagr.'), image: rewardIconSources.picnic.image },
             { label: 'Najmanje osvojenih', value: formatChildStat(rewardStats.leastRewardedChild, 'nagr.'), icon: icons.user },
           ]}
           highlight={`${rewardStats.approvedPoints} bodova je trenutno osvojeno`}
-          hint="Ostvarive nagrade se računaju po djetetu: aktivna nagrada, dovoljno bodova tog djeteta i bez postojećeg zahtjeva."
+          hint="Ostvarive nagrade se racunaju po djetetu: aktivna nagrada, dovoljno bodova tog djeteta i bez postojeceg zahtjeva."
         />
         <NotificationsModal
           visible={isNotificationsVisible}
           notifications={notifications}
+          readNotificationIds={readNotificationIds}
           onClose={() => setIsNotificationsVisible(false)}
           onNotificationPress={handleNotificationPress}
         />
@@ -779,7 +858,7 @@ function RewardSuggestionsContent({ suggestions, error, isLoading, onSuggestionP
     return (
       <View style={styles.childrenStateBox}>
         <ActivityIndicator color="#f97316" />
-        <Text style={styles.childrenStateText}>Učitavanje prijedloga nagrada...</Text>
+        <Text style={styles.childrenStateText}>Ucitavanje prijedloga nagrada...</Text>
       </View>
     );
   }
@@ -796,7 +875,7 @@ function RewardSuggestionsContent({ suggestions, error, isLoading, onSuggestionP
     return (
       <View style={styles.childrenStateBox}>
         <Text style={styles.childrenStateTitle}>Nema novih prijedloga.</Text>
-        <Text style={styles.childrenStateText}>Kada dijete predloži nagradu, pojavit će se ovdje.</Text>
+        <Text style={styles.childrenStateText}>Kada dijete predloži nagradu, pojavit ce se ovdje.</Text>
       </View>
     );
   }
@@ -1000,7 +1079,7 @@ function TaskDetailsModal({ task, childName, isUpdating, onClose, onApprove, onR
               </Pressable>
             </View>
           ) : (
-            <Text style={styles.modalHint}>Ovaj zadatak je već obrađen.</Text>
+            <Text style={styles.modalHint}>Ovaj zadatak je vec obraden.</Text>
           )}
         </View>
       </View>
@@ -1057,7 +1136,7 @@ function RewardRequestReviewModal({ visible, request, reward, childName, isSubmi
               </Pressable>
             </View>
           ) : (
-            <Text style={styles.modalHint}>Ovaj zahtjev je već obrađen.</Text>
+            <Text style={styles.modalHint}>Ovaj zahtjev je vec obraden.</Text>
           )}
         </View>
       </View>
@@ -1066,12 +1145,21 @@ function RewardRequestReviewModal({ visible, request, reward, childName, isSubmi
 }
 
 function ParentMessagesModal({ visible, currentUser, children, messages, selectedChild, readMessageChildIds, draft, isSending, onSelectChild, onDraftChange, onSend, onClose }) {
+  const chatScrollRef = useRef(null);
   const currentUserId = currentUser?.id ?? currentUser?.userId;
   const selectedChildId = getChildUserId(selectedChild);
   const conversationMessages = messages
     .filter((message) => isConversationMessage(message, currentUserId, selectedChildId))
     .filter((message) => !isSystemNotificationMessage(message))
     .sort((first, second) => new Date(first.sentAt) - new Date(second.sentAt));
+
+  useEffect(() => {
+    if (visible && selectedChild) {
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    }
+  }, [visible, selectedChild, conversationMessages.length]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -1127,7 +1215,12 @@ function ParentMessagesModal({ visible, currentUser, children, messages, selecte
               </Pressable>
               <Text style={styles.chatTitle}>{selectedChild.childName}</Text>
 
-              <ScrollView style={styles.chatMessagesList} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                ref={chatScrollRef}
+                style={styles.chatMessagesList}
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+              >
                 {conversationMessages.length === 0 ? (
                   <View style={styles.chatEmptyBox}>
                     <Text style={styles.childrenStateText}>Još nema poruka u ovom razgovoru.</Text>
@@ -1167,7 +1260,7 @@ function ParentMessagesModal({ visible, currentUser, children, messages, selecte
   );
 }
 
-function NotificationsModal({ visible, notifications, onClose, onNotificationPress }) {
+function NotificationsModal({ visible, notifications, readNotificationIds, onClose, onNotificationPress }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -1185,19 +1278,27 @@ function NotificationsModal({ visible, notifications, onClose, onNotificationPre
             </View>
           ) : (
             <ScrollView style={styles.notificationsList} showsVerticalScrollIndicator={false}>
-              {notifications.map((notification) => (
-                <Pressable key={notification.id} style={styles.notificationRow} onPress={() => onNotificationPress?.(notification)}>
-                  <View style={styles.notificationTypePill}>
-                    <Text style={styles.notificationTypeText}>{notification.type}</Text>
-                  </View>
-                  <View style={styles.notificationBody}>
-                    <Text style={styles.notificationTitle}>{notification.title}</Text>
-                    <Text style={styles.notificationText}>{notification.text}</Text>
-                    <Text style={styles.notificationTime}>{formatMessageTime(notification.date)}</Text>
-                  </View>
-                  <Icon source={icons.chevronRight} size={18} color="#8790a7" />
-                </Pressable>
-              ))}
+              {notifications.map((notification) => {
+                const isRead = readNotificationIds.includes(notification.id);
+
+                return (
+                  <Pressable
+                    key={notification.id}
+                    style={[styles.notificationRow, isRead && styles.notificationRowRead]}
+                    onPress={() => onNotificationPress?.(notification)}
+                  >
+                    <View style={[styles.notificationTypePill, isRead && styles.notificationTypePillRead]}>
+                      <Text style={styles.notificationTypeText}>{notification.type}</Text>
+                    </View>
+                    <View style={styles.notificationBody}>
+                      <Text style={[styles.notificationTitle, isRead && styles.notificationTitleRead]}>{notification.title}</Text>
+                      <Text style={styles.notificationText}>{notification.text}</Text>
+                      <Text style={styles.notificationTime}>{formatMessageTime(notification.date)}</Text>
+                    </View>
+                    <Icon source={icons.chevronRight} size={18} color={isRead ? '#b7c0d0' : '#8790a7'} />
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           )}
         </View>
@@ -1211,7 +1312,7 @@ function ChildrenContent({ children, error, isLoading, onChildPress }) {
     return (
       <View style={styles.childrenStateBox}>
         <ActivityIndicator color="#0065ff" />
-        <Text style={styles.childrenStateText}>Učitavanje djece...</Text>
+        <Text style={styles.childrenStateText}>Ucitavanje djece...</Text>
       </View>
     );
   }
@@ -1304,21 +1405,27 @@ function StatsDetailsModal({ visible, title, color, stats, highlight, hint, onCl
             </Pressable>
           </View>
 
-          <View style={[styles.statsHighlight, { borderColor: color }]}>
-            <Text style={[styles.statsHighlightText, { color }]}>{highlight}</Text>
-          </View>
+          <ScrollView style={styles.statsModalContent} showsVerticalScrollIndicator={false}>
+            <View style={[styles.statsHighlight, { borderColor: color }]}>
+              <Text style={[styles.statsHighlightText, { color }]}>{highlight}</Text>
+            </View>
 
-          <View style={styles.statsGrid}>
-            {stats.map((stat) => (
-              <View key={stat.label} style={styles.statsDetailCard}>
-                {stat.image ? <Image source={stat.image} style={styles.statsDetailImage} resizeMode="contain" /> : <Icon source={stat.icon} size={30} color={color} />}
-                <Text style={styles.statsDetailValue}>{stat.value}</Text>
-                <Text style={styles.statsDetailLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
+            <View style={styles.statsGrid}>
+              {stats.map((stat) => (
+                <View key={stat.label} style={styles.statsDetailCard}>
+                  {stat.image ? <Image source={stat.image} style={styles.statsDetailImage} resizeMode="contain" /> : <Icon source={stat.icon} size={30} color={color} />}
+                  <Text style={styles.statsDetailValue}>{stat.value}</Text>
+                  <Text style={styles.statsDetailLabel}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
 
-          <Text style={styles.statsHint}>{hint}</Text>
+            <Text style={styles.statsHint}>{hint}</Text>
+          </ScrollView>
+
+          <Pressable style={[styles.statsBackButton, { backgroundColor: color }]} onPress={onClose}>
+            <Text style={styles.statsBackButtonText}>Nazad na pocetnu</Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -1348,7 +1455,7 @@ function DashedButton({ label, icon, color, onPress }) {
 
 function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
   const items = [
-    { label: 'Početna', icon: icons.home, active: true, onPress: onNavigateHome },
+    { label: 'Pocetna', icon: icons.home, active: true, onPress: onNavigateHome },
     { label: 'Djeca', icon: icons.user, onPress: onNavigateChildren },
     { label: 'Nagrade', icon: icons.gift, onPress: onNavigateRewards },
     { label: 'Poruke', icon: icons.chat, onPress: onNavigateMessages },
@@ -1492,10 +1599,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#ffffff' },
   scrollContent: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 110 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 },
-  headerTextBox: { flex: 1, paddingRight: 12 },
-  welcomeText: { color: '#4c5877', fontSize: 18, marginBottom: 6 },
-  userName: { color: '#061e60', fontSize: 32, fontWeight: '800', lineHeight: 38 },
-  subText: { color: '#4c5877', fontSize: 17, marginTop: 8 },
+  headerTextBox: { flex: 1, minWidth: 0, paddingRight: 12 },
+  welcomeText: { color: '#4c5877', fontSize: 17, fontWeight: '700', marginBottom: 4 },
+  userName: { color: '#061e60', fontSize: 29, fontWeight: '800', lineHeight: 35 },
+  subText: { color: '#4c5877', fontSize: 15, fontWeight: '600', marginTop: 4 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   bellButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', right: 1, top: 2, minWidth: 24, height: 24, borderRadius: 12, backgroundColor: '#ff3d32', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff' },
@@ -1558,7 +1665,7 @@ const styles = StyleSheet.create({
   unreadPill: { borderRadius: 999, backgroundColor: '#0065ff', paddingHorizontal: 7, paddingVertical: 3 },
   unreadPillText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.42)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
-  statsModalCard: { width: '100%', maxWidth: 390, borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
+  statsModalCard: { width: '100%', maxWidth: 390, maxHeight: '84%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   reviewModalCard: { width: '100%', maxWidth: 390, borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   messagesModalCard: { width: '100%', maxWidth: 410, height: '78%', borderRadius: 18, backgroundColor: '#ffffff', padding: 18, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   notificationsModalCard: { width: '100%', maxWidth: 390, maxHeight: '78%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
@@ -1567,12 +1674,15 @@ const styles = StyleSheet.create({
   modalClose: { color: '#536079', fontSize: 34, lineHeight: 34, fontWeight: '300' },
   statsHighlight: { borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#f8fbff', marginBottom: 14 },
   statsHighlightText: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  statsModalContent: { flexGrow: 0, flexShrink: 1 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statsDetailCard: { width: '48%', minHeight: 104, borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#ffffff' },
   statsDetailImage: { width: 34, height: 34 },
   statsDetailValue: { color: '#071e60', fontSize: 18, fontWeight: '900', textAlign: 'center', marginTop: 5 },
   statsDetailLabel: { color: '#4c5877', fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 4 },
   statsHint: { color: '#4c5877', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 14 },
+  statsBackButton: { minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  statsBackButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '900' },
   reviewHero: { borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 14, backgroundColor: '#fbfdff' },
   reviewIconBox: { width: 70, height: 70, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   reviewIcon: { width: 54, height: 54 },
@@ -1600,10 +1710,13 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.65 },
   notificationsList: { maxHeight: 430 },
   notificationRow: { borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 13, padding: 12, marginBottom: 10, flexDirection: 'row', backgroundColor: '#fbfdff' },
+  notificationRowRead: { backgroundColor: '#f3f6fb', borderColor: '#edf1f7' },
   notificationTypePill: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#eaf2ff', paddingHorizontal: 9, paddingVertical: 5, marginRight: 10 },
+  notificationTypePillRead: { backgroundColor: '#eef1f6' },
   notificationTypeText: { color: '#0065ff', fontSize: 11, fontWeight: '900' },
   notificationBody: { flex: 1 },
   notificationTitle: { color: '#071e60', fontSize: 15, fontWeight: '900' },
+  notificationTitleRead: { color: '#536079' },
   notificationText: { color: '#4c5877', fontSize: 13, lineHeight: 18, marginTop: 4 },
   notificationTime: { color: '#8790a7', fontSize: 12, marginTop: 6 },
   chatContactList: { flex: 1 },
@@ -1628,7 +1741,7 @@ const styles = StyleSheet.create({
   chatInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   chatInput: { flex: 1, minHeight: 48, maxHeight: 96, borderWidth: 1, borderColor: '#dce3ef', borderRadius: 14, paddingHorizontal: 13, paddingVertical: 11, color: '#071e60', fontSize: 15, fontWeight: '700', backgroundColor: '#fbfdff' },
   chatSendButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#0065ff', alignItems: 'center', justifyContent: 'center' },
-  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
+  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 12, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
   navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 56 },
   navLabel: { color: '#46536c', fontSize: 12, marginTop: 4, fontWeight: '600' },
   navLabelActive: { color: '#0065ff' },

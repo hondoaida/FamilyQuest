@@ -36,6 +36,14 @@ namespace FamilyQuestWebApi.Services
         public string? NewPassword { get; set; }
     }
 
+    public class UpdateChildProfileRequest
+    {
+        [MaxLength(50)]
+        public string? AvatarKey { get; set; }
+
+        public string? NewPassword { get; set; }
+    }
+
     public record UserResponse(
         int Id,
         string Name,

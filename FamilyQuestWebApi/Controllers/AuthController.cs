@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace FamilyQuestWebApi.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/auth")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
@@ -21,7 +21,7 @@ namespace FamilyQuestWebApi.Controllers
 
             if (response == null)
             {
-                return Unauthorized();
+                return Unauthorized("Neispravno korisničko ime ili šifra.");
             }
 
             return Ok(response);

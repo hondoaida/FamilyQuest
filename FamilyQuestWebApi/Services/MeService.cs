@@ -99,6 +99,53 @@ namespace FamilyQuestWebApi.Services
                 user.AvatarKey));
         }
 
+        public async Task<ServiceResult<ParentChildResponse>> UpdateChildProfileAsync(int childId, UpdateChildProfileRequest request)
+        {
+            if (_currentUserService.Role != UserRole.Parent)
+            {
+                return ServiceResult<ParentChildResponse>.Failure(ServiceErrorType.Forbidden, "Samo roditelj može urediti profil djeteta.");
+            }
+
+            var parentChild = await _dbContext.ParentChildren
+                .Include(parentChild => parentChild.Child)
+                .FirstOrDefaultAsync(parentChild => parentChild.ParentId == _currentUserService.UserId && parentChild.ChildId == childId);
+
+            if (parentChild == null || !parentChild.Child.IsActive)
+            {
+                return ServiceResult<ParentChildResponse>.Failure(ServiceErrorType.NotFound, "Dijete nije pronađeno.");
+            }
+
+            if (parentChild.Child.Role != UserRole.Child)
+            {
+                return ServiceResult<ParentChildResponse>.Failure(ServiceErrorType.BadRequest, "Profil se može urediti samo za dijete.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.AvatarKey))
+            {
+                parentChild.Child.AvatarKey = request.AvatarKey.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.NewPassword))
+            {
+                if (request.NewPassword.Length < 8)
+                {
+                    return ServiceResult<ParentChildResponse>.Failure(ServiceErrorType.BadRequest, "Nova šifra mora imati najmanje 8 karaktera.");
+                }
+
+                parentChild.Child.PasswordHash = _passwordHasher.HashPassword(request.NewPassword);
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            return ServiceResult<ParentChildResponse>.Success(new ParentChildResponse(
+                parentChild.Id,
+                parentChild.ParentId,
+                parentChild.ChildId,
+                parentChild.Child.Name,
+                parentChild.Child.Email,
+                parentChild.Child.AvatarKey));
+        }
+
         public async Task<IEnumerable<TaskResponse>> GetTasksAsync()
         {
             return await _taskService.GetTasksAsync();
@@ -113,7 +160,7 @@ namespace FamilyQuestWebApi.Services
         {
             if (_currentUserService.Role != UserRole.Child)
             {
-                return ServiceResult<bool>.Failure(ServiceErrorType.Forbidden, "Samo dijete moze predloziti nagradu.");
+                return ServiceResult<bool>.Failure(ServiceErrorType.Forbidden, "Samo dijete može predložiti nagradu.");
             }
 
             var child = await _dbContext.Users
@@ -121,7 +168,7 @@ namespace FamilyQuestWebApi.Services
 
             if (child == null)
             {
-                return ServiceResult<bool>.Failure(ServiceErrorType.NotFound, "Dijete nije pronadjeno.");
+                return ServiceResult<bool>.Failure(ServiceErrorType.NotFound, "Dijete nije pronađeno.");
             }
 
             var parentIds = await _dbContext.ParentChildren

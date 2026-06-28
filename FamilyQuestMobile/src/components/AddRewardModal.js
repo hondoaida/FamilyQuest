@@ -3,8 +3,7 @@ import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Tex
 
 const icons = {
   chevronRight: require('../../assets/home-icons/chevron-right.png'),
-  gift: require('../../assets/home-icons/gift.png'),
-  star: require('../../assets/home-icons/star.png'),
+  star: require('../../assets/child-home/star.png'),
   bell: require('../../assets/home-icons/bell.png'),
 };
 
@@ -118,7 +117,7 @@ export function AddRewardModal({ visible, child, onClose, onSubmit }) {
           </View>
 
           <FieldFrame label="Naziv nagrade">
-            <Icon source={icons.gift} size={31} color="#536079" />
+            <GiftIcon size={31} color="#536079" />
             <TextInput
               style={styles.input}
               value={rewardName}
@@ -233,6 +232,21 @@ function Icon({ source, size, color }) {
   return <Image source={source} style={{ width: size, height: size, tintColor: color }} resizeMode="contain" />;
 }
 
+function GiftIcon({ size, color }) {
+  const scale = size / 31;
+
+  return (
+    <View style={[styles.giftIcon, { width: size, height: size }]}>
+      <View style={[styles.giftLid, { width: 27 * scale, height: 8 * scale, borderColor: color, borderRadius: 3 * scale }]} />
+      <View style={[styles.giftBox, { width: 23 * scale, height: 18 * scale, borderColor: color, borderRadius: 3 * scale }]} />
+      <View style={[styles.giftRibbonVertical, { width: 3 * scale, backgroundColor: color }]} />
+      <View style={[styles.giftRibbonHorizontal, { height: 3 * scale, backgroundColor: color, top: 10 * scale }]} />
+      <View style={[styles.giftBowLeft, { width: 8 * scale, height: 7 * scale, borderColor: color, borderRadius: 7 * scale, left: 6 * scale }]} />
+      <View style={[styles.giftBowRight, { width: 8 * scale, height: 7 * scale, borderColor: color, borderRadius: 7 * scale, right: 6 * scale }]} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.42)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   modalCard: { width: '100%', maxWidth: 390, borderRadius: 18, backgroundColor: '#ffffff', paddingHorizontal: 22, paddingTop: 22, paddingBottom: 22, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
@@ -269,4 +283,11 @@ const styles = StyleSheet.create({
   primaryButton: { flex: 1, height: 54, borderRadius: 10, backgroundColor: '#0ca85d', alignItems: 'center', justifyContent: 'center', shadowColor: '#0ca85d', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 5 },
   disabledButton: { opacity: 0.7 },
   primaryButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
+  giftIcon: { alignItems: 'center', justifyContent: 'flex-end' },
+  giftLid: { borderWidth: 2 },
+  giftBox: { borderWidth: 2, marginTop: 2 },
+  giftRibbonVertical: { bottom: 0, height: 19, position: 'absolute' },
+  giftRibbonHorizontal: { left: 3, position: 'absolute', right: 3 },
+  giftBowLeft: { borderWidth: 2, position: 'absolute', top: 0, transform: [{ rotate: '-28deg' }] },
+  giftBowRight: { borderWidth: 2, position: 'absolute', top: 0, transform: [{ rotate: '28deg' }] },
 });

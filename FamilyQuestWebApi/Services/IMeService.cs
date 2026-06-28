@@ -6,6 +6,8 @@ namespace FamilyQuestWebApi.Services
 
         Task<ServiceResult<UserResponse>> UpdateCurrentUserAsync(UpdateCurrentUserRequest request);
 
+        Task<ServiceResult<ParentChildResponse>> UpdateChildProfileAsync(int childId, UpdateChildProfileRequest request);
+
         Task<IEnumerable<TaskResponse>> GetTasksAsync();
 
         Task<IEnumerable<RewardResponse>> GetRewardsAsync();

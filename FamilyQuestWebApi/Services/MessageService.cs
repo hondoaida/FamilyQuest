@@ -1,6 +1,8 @@
 using FamilyQuestWebApi.Data;
+using FamilyQuestWebApi.Hubs;
 using FamilyQuestWebApi.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 
 namespace FamilyQuestWebApi.Services
 {
@@ -8,11 +10,16 @@ namespace FamilyQuestWebApi.Services
     {
         private readonly FamilyQuestDbContext _dbContext;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IHubContext<ChatHub> _chatHubContext;
 
-        public MessageService(FamilyQuestDbContext dbContext, ICurrentUserService currentUserService)
+        public MessageService(
+            FamilyQuestDbContext dbContext,
+            ICurrentUserService currentUserService,
+            IHubContext<ChatHub> chatHubContext)
         {
             _dbContext = dbContext;
             _currentUserService = currentUserService;
+            _chatHubContext = chatHubContext;
         }
 
         public async Task<IEnumerable<MessageResponse>> GetMessagesAsync()
@@ -76,7 +83,13 @@ namespace FamilyQuestWebApi.Services
             _dbContext.Messages.Add(message);
             await _dbContext.SaveChangesAsync();
 
-            return ServiceResult<MessageResponse>.Success(ToResponse(message));
+            var response = ToResponse(message);
+
+            await _chatHubContext.Clients
+                .Group(ChatHub.GetUserGroupName(message.ReceiverId))
+                .SendAsync("MessageReceived", response);
+
+            return ServiceResult<MessageResponse>.Success(response);
         }
 
         private async Task<bool> AreFamilyMembersAsync(int firstUserId, int secondUserId)

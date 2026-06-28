@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Font from 'expo-font';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { getMyChildren } from '../services/childrenService';
@@ -9,6 +10,7 @@ import { getMyMessages, sendMessage } from '../services/messageService';
 import { createRewardRequest, getRewardRequests, REWARD_REQUEST_STATUSES } from '../services/rewardRequestService';
 import { getRewards } from '../services/rewardService';
 import { suggestReward } from '../services/rewardSuggestionService';
+import { createChatConnection } from '../services/realtimeService';
 import { getTasks, TASK_STATUSES, updateTaskStatus } from '../services/taskService';
 import { getChildAvatarSource } from '../utils/childAvatars';
 
@@ -38,6 +40,7 @@ const icons = {
 };
 
 const ChildFontContext = createContext(false);
+const READ_NOTIFICATIONS_STORAGE_PREFIX = 'familyquest:child:read-notifications';
 
 const taskIconSources = {
   dishes: { image: require('../../assets/taskt-item/dishes.png'), color: '#dff4ff' },
@@ -87,7 +90,7 @@ const tabs = {
   rewards: 'rewards',
 };
 
-export function ChildHomeScreen({ token, user, onNavigateHome }) {
+export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
   const [activeTab, setActiveTab] = useState(tabs.home);
   const [isFontLoaded, setIsFontLoaded] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -106,6 +109,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
   const [isSuggestRewardVisible, setIsSuggestRewardVisible] = useState(false);
   const [isMessagesVisible, setIsMessagesVisible] = useState(false);
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState([]);
   const [messageDraft, setMessageDraft] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
@@ -132,14 +136,59 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
       setFamilyLinks(loadedFamilyLinks ?? []);
       setMessages(loadedMessages ?? []);
     } catch (loadError) {
-      setError(loadError.message || 'Ucitavanje podataka nije uspjelo.');
+      setError(loadError.message || 'Učitavanje podataka nije uspjelo.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const refreshMessages = async () => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const loadedMessages = await getMyMessages({ token });
+      setMessages(loadedMessages ?? []);
+    } catch {
+    }
+  };
+
+  const handleOpenMessages = () => {
+    refreshMessages();
+    setIsMessagesVisible(true);
+  };
+
   useEffect(() => {
     loadChildData();
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
+    const connection = createChatConnection(token);
+    let isMounted = true;
+
+    connection.on('MessageReceived', (message) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setMessages((currentMessages) => (
+        currentMessages.some((currentMessage) => sameId(currentMessage.id, message.id))
+          ? currentMessages
+          : [...currentMessages, message]
+      ));
+    });
+
+    connection.start().catch(() => {});
+
+    return () => {
+      isMounted = false;
+      connection.stop().catch(() => {});
+    };
   }, [token]);
 
   useEffect(() => {
@@ -212,6 +261,37 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
   }, [activeTab, rewards, stats.approvedPoints]);
 
   const parentId = familyLinks[0]?.parentId;
+  const currentUserId = user?.id ?? user?.userId;
+  const readNotificationsStorageKey = `${READ_NOTIFICATIONS_STORAGE_PREFIX}:${currentUserId ?? 'anonymous'}`;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadReadNotifications = async () => {
+      if (!currentUserId) {
+        setReadNotificationIds([]);
+        return;
+      }
+
+      try {
+        const storedIds = await AsyncStorage.getItem(readNotificationsStorageKey);
+
+        if (isMounted) {
+          setReadNotificationIds(storedIds ? JSON.parse(storedIds) : []);
+        }
+      } catch {
+        if (isMounted) {
+          setReadNotificationIds([]);
+        }
+      }
+    };
+
+    loadReadNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, readNotificationsStorageKey]);
 
   const notifications = useMemo(() => {
     const taskNotifications = tasks
@@ -246,7 +326,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
       });
 
     const messageNotifications = messages
-      .filter((message) => Number(message.senderId) !== Number(user?.id ?? user?.userId))
+      .filter((message) => Number(message.senderId) !== Number(currentUserId))
       .filter((message) => !isSystemNotificationMessage(message))
       .map((message) => ({
         id: `message-${message.id}`,
@@ -260,9 +340,31 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
     return [...taskNotifications, ...rewardNotifications, ...messageNotifications]
       .sort((first, second) => new Date(second.date ?? 0) - new Date(first.date ?? 0))
       .slice(0, 20);
-  }, [messages, rewardRequests, rewards, tasks, user?.id, user?.userId]);
+  }, [currentUserId, messages, rewardRequests, rewards, tasks]);
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter((notification) => !readNotificationIds.includes(notification.id)),
+    [notifications, readNotificationIds],
+  );
+
+  const markNotificationsAsRead = (notificationIds) => {
+    setReadNotificationIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      notificationIds.forEach((notificationId) => nextIds.add(notificationId));
+      const nextIdsArray = [...nextIds];
+
+      AsyncStorage.setItem(readNotificationsStorageKey, JSON.stringify(nextIdsArray)).catch(() => {});
+
+      return nextIdsArray;
+    });
+  };
+
+  const handleOpenNotifications = () => {
+    setIsNotificationsVisible(true);
+  };
 
   const handleNotificationPress = (notification) => {
+    markNotificationsAsRead([notification.id]);
     setIsNotificationsVisible(false);
 
     if (notification.actionType === 'task') {
@@ -276,7 +378,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
     }
 
     if (notification.actionType === 'messages') {
-      setIsMessagesVisible(true);
+      handleOpenMessages();
     }
   };
 
@@ -332,7 +434,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
       const mimeType = asset.mimeType || 'image/jpeg';
 
       if (!asset.base64) {
-        setSelectedTaskError('Sliku nije moguce ucitati. Pokusajte drugu sliku.');
+        setSelectedTaskError('Sliku nije moguće učitati. Pokušajte drugu sliku.');
         return;
       }
 
@@ -349,7 +451,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
 
   const handleCompleteTask = async (task) => {
     if (!selectedTaskImage?.dataUrl) {
-      setSelectedTaskError('Prvo odaberite sliku kao dokaz zavrsenog zadatka.');
+      setSelectedTaskError('Prvo odaberite sliku kao dokaz završenog zadatka.');
       return;
     }
 
@@ -372,7 +474,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
       setSelectedTask(null);
       setSelectedTaskImage(null);
     } catch (updateError) {
-      setSelectedTaskError(updateError.message || 'Zadatak nije moguce oznaciti kao zavrsen.');
+      setSelectedTaskError(updateError.message || 'Zadatak nije moguće označiti kao završen.');
     } finally {
       setUpdatingTaskId(null);
     }
@@ -385,9 +487,9 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
     try {
       const createdRequest = await createRewardRequest({ token, rewardId: reward.id });
       setRewardRequests((currentRequests) => [...currentRequests, createdRequest]);
-      Alert.alert('Zahtjev poslan', 'Roditelj sada moze odobriti nagradu.');
+      Alert.alert('Zahtjev poslan', 'Roditelj sada može odobriti nagradu.');
     } catch (requestError) {
-      setError(requestError.message || 'Zahtjev za nagradu nije moguce poslati.');
+      setError(requestError.message || 'Zahtjev za nagradu nije moguće poslati.');
     } finally {
       setRequestingRewardId(null);
     }
@@ -395,7 +497,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
 
   const handleSuggestReward = async (rewardSuggestion) => {
     if (!token) {
-      throw new Error('Morate biti prijavljeni da biste predlozili nagradu.');
+      throw new Error('Morate biti prijavljeni da biste predložili nagradu.');
     }
 
     await suggestReward({ token, reward: rewardSuggestion });
@@ -448,11 +550,11 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
                   <ChildText style={styles.pointsLabel}>Moji bodovi</ChildText>
                 </View>
               </View>
-              <Pressable style={styles.childBellButton} onPress={() => setIsNotificationsVisible(true)}>
+              <Pressable style={styles.childBellButton} onPress={handleOpenNotifications}>
                 <Icon source={icons.bell} size={28} color="#071e60" />
-                {notifications.length > 0 ? (
+                {unreadNotifications.length > 0 ? (
                   <View style={styles.childBadge}>
-                    <ChildText style={styles.childBadgeText}>{notifications.length > 99 ? '99+' : notifications.length}</ChildText>
+                    <ChildText style={styles.childBadgeText}>{unreadNotifications.length > 99 ? '99+' : unreadNotifications.length}</ChildText>
                   </View>
                 ) : null}
               </Pressable>
@@ -466,8 +568,8 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
               </View>
               <View style={styles.motivationTextBox}>
                 <ChildText style={styles.motivationTitle}>Svaki zadatak</ChildText>
-                <ChildText style={styles.motivationLink}>te priblizava nagradi!</ChildText>
-                <ChildText style={styles.motivationSubtitle}>Vjeruj u sebe, mozes ti to!</ChildText>
+                <ChildText style={styles.motivationLink}>te približava nagradi!</ChildText>
+                <ChildText style={styles.motivationSubtitle}>Vjeruj u sebe, možeš ti to!</ChildText>
               </View>
             </View>
           ) : null}
@@ -475,7 +577,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
           {isLoading ? (
             <View style={styles.stateBox}>
               <ActivityIndicator color="#0065ff" />
-              <ChildText style={styles.stateText}>Ucitavanje child ekrana...</ChildText>
+              <ChildText style={styles.stateText}>Učitavanje child ekrana...</ChildText>
             </View>
           ) : null}
 
@@ -483,13 +585,13 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
             <View style={styles.errorBox}>
               <ChildText style={styles.errorText}>{error}</ChildText>
               <Pressable style={styles.retryButton} onPress={loadChildData}>
-                <ChildText style={styles.retryButtonText}>Pokusaj ponovo</ChildText>
+                <ChildText style={styles.retryButtonText}>Pokušaj ponovo</ChildText>
               </Pressable>
             </View>
           ) : null}
 
           {activeTab === tabs.profile ? (
-            <ChildProfileModule user={user} stats={stats} />
+            <ChildProfileModule user={user} stats={stats} onLogout={onLogout} />
           ) : null}
 
           {activeTab !== tabs.rewards && activeTab !== tabs.profile ? (
@@ -500,7 +602,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
               onAction={activeTab === tabs.home ? () => setActiveTab(tabs.tasks) : undefined}
             >
               {visibleTasks.length === 0 && !isLoading ? (
-                <EmptyState text="Nemas otvorenih zadataka." />
+                <EmptyState text="Nemaš otvorenih zadataka." />
               ) : (
                 visibleTasks.map((task) => (
                   <TaskCard
@@ -522,7 +624,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
               onAction={activeTab === tabs.home ? () => setActiveTab(tabs.rewards) : undefined}
             >
               {visibleRewards.length === 0 && !isLoading ? (
-                <EmptyState text="Jos nema nagrada za tebe." />
+                <EmptyState text="Još nema nagrada za tebe." />
               ) : activeTab === tabs.rewards ? (
                 <View style={styles.rewardsList}>
                   {visibleRewards.map((reward) => (
@@ -554,7 +656,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
               {activeTab === tabs.rewards ? (
                 <Pressable style={styles.suggestRewardButton} onPress={() => setIsSuggestRewardVisible(true)}>
                   <Icon source={icons.gift} size={24} color="#0ca85d" />
-                  <ChildText style={styles.suggestRewardButtonText}>Predlozi nagradu</ChildText>
+                  <ChildText style={styles.suggestRewardButtonText}>Predloži nagradu</ChildText>
                 </Pressable>
               ) : null}
             </Section>
@@ -575,7 +677,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
                   <ChildText style={styles.levelValue}>{level}</ChildText>
                 </View>
                 <View style={styles.levelProgressBox}>
-                  <ChildText style={styles.levelHint}>Jos {pointsToNextLevel} bodova do nivoa {level + 1}</ChildText>
+                  <ChildText style={styles.levelHint}>Još {pointsToNextLevel} bodova do nivoa {level + 1}</ChildText>
                   <View style={styles.progressTrack}>
                     <View style={[styles.progressFill, { width: `${levelProgress}%` }]} />
                   </View>
@@ -593,7 +695,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
                   <Icon source={icons.checkCircle} size={27} color="#ffffff" />
                   <View>
                     <ChildText style={styles.dailyGoalTitle}>Dnevni cilj</ChildText>
-                    <ChildText style={styles.dailyGoalText}>{stats.approvedTasks} / {Math.max(stats.totalTasks, 1)} zavrsena</ChildText>
+                    <ChildText style={styles.dailyGoalText}>{stats.approvedTasks} / {Math.max(stats.totalTasks, 1)} završena</ChildText>
                   </View>
                 </View>
               </View>
@@ -634,6 +736,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
         <ChildNotificationsModal
           visible={isNotificationsVisible}
           notifications={notifications}
+          readNotificationIds={readNotificationIds}
           onClose={() => setIsNotificationsVisible(false)}
           onNotificationPress={handleNotificationPress}
         />
@@ -641,7 +744,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome }) {
           activeTab={activeTab}
           onChangeTab={setActiveTab}
           onNavigateHome={onNavigateHome}
-          onNavigateMessages={() => setIsMessagesVisible(true)}
+          onNavigateMessages={handleOpenMessages}
         />
       </View>
     </SafeAreaView>
@@ -704,7 +807,7 @@ function ChildTaskSubmitModal({ task, image, errorMessage, isPickingImage, isSub
       <View style={styles.modalOverlay}>
         <View style={styles.submitModalCard}>
           <View style={styles.modalHeaderRow}>
-            <ChildText style={styles.modalTitle}>Zavrsi zadatak</ChildText>
+            <ChildText style={styles.modalTitle}>Završi zadatak</ChildText>
             <Pressable onPress={onClose} hitSlop={10} disabled={isSubmitting}>
               <ChildText style={styles.modalClose}>x</ChildText>
             </Pressable>
@@ -737,7 +840,7 @@ function ChildTaskSubmitModal({ task, image, errorMessage, isPickingImage, isSub
                 <Image source={{ uri: image.uri }} style={styles.previewImage} resizeMode="cover" />
               ) : (
                 <View style={styles.previewPlaceholder}>
-                  <ChildText style={styles.previewPlaceholderText}>Slika zadatka ce se prikazati ovdje.</ChildText>
+                  <ChildText style={styles.previewPlaceholderText}>Slika zadatka će se prikazati ovdje.</ChildText>
                 </View>
               )}
 
@@ -748,12 +851,12 @@ function ChildTaskSubmitModal({ task, image, errorMessage, isPickingImage, isSub
                   <ChildText style={styles.cancelSubmitButtonText}>Odustani</ChildText>
                 </Pressable>
                 <Pressable style={[styles.submitDoneButton, isSubmitting && styles.disabledButton]} onPress={onSubmit} disabled={isSubmitting}>
-                  {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <ChildText style={styles.submitDoneButtonText}>Zavrsi</ChildText>}
+                  {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <ChildText style={styles.submitDoneButtonText}>Završi</ChildText>}
                 </Pressable>
               </View>
             </>
           ) : (
-            <ChildText style={styles.modalHint}>Ovaj zadatak je vec poslan ili zakljucen.</ChildText>
+            <ChildText style={styles.modalHint}>Ovaj zadatak je već poslan ili zaključen.</ChildText>
           )}
         </View>
       </View>
@@ -829,7 +932,7 @@ function SuggestRewardModal({ visible, onClose, onSubmit }) {
       <View style={styles.modalOverlay}>
         <View style={styles.suggestModalCard}>
           <View style={styles.modalHeaderRow}>
-            <ChildText style={styles.modalTitle}>Predlozi nagradu</ChildText>
+            <ChildText style={styles.modalTitle}>Predloži nagradu</ChildText>
             <Pressable onPress={handleClose} hitSlop={10} disabled={isSubmitting}>
               <ChildText style={styles.modalClose}>x</ChildText>
             </Pressable>
@@ -893,7 +996,7 @@ function SuggestRewardModal({ visible, onClose, onSubmit }) {
               <ChildText style={styles.cancelSubmitButtonText}>Odustani</ChildText>
             </Pressable>
             <Pressable style={[styles.submitDoneButton, isSubmitting && styles.disabledButton]} onPress={handleSubmit} disabled={isSubmitting}>
-              {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <ChildText style={styles.submitDoneButtonText}>Posalji</ChildText>}
+              {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <ChildText style={styles.submitDoneButtonText}>Pošalji</ChildText>}
             </Pressable>
           </View>
         </View>
@@ -919,11 +1022,11 @@ function RewardCard({ reward, points, request, isRequesting, onRequest, variant 
         <ChildText style={[styles.rewardName, isList && styles.rewardNameList]}>{reward.name}</ChildText>
         <ChildText style={[styles.rewardPoints, isList && styles.rewardPointsList]}>{requiredPoints} bodova</ChildText>
         {requestLabel ? <ChildText style={styles.rewardRequestText}>{requestLabel}</ChildText> : null}
-        {!requestLabel && missingPoints > 0 ? <ChildText style={styles.rewardLockedText}>Jos {missingPoints} bodova</ChildText> : null}
+        {!requestLabel && missingPoints > 0 ? <ChildText style={styles.rewardLockedText}>Još {missingPoints} bodova</ChildText> : null}
       </View>
       {canRequest ? (
         <Pressable style={[styles.rewardButton, isList && styles.rewardButtonList]} onPress={onRequest} disabled={isRequesting}>
-          {isRequesting ? <ActivityIndicator color="#ffffff" size="small" /> : <ChildText style={styles.rewardButtonText}>Zatrazi</ChildText>}
+          {isRequesting ? <ActivityIndicator color="#ffffff" size="small" /> : <ChildText style={styles.rewardButtonText}>Zatraži</ChildText>}
         </Pressable>
       ) : null}
     </View>
@@ -948,7 +1051,7 @@ function EmptyState({ text }) {
   );
 }
 
-function ChildProfileModule({ user, stats }) {
+function ChildProfileModule({ user, stats, onLogout }) {
   const level = Math.max(1, Math.floor(stats.approvedPoints / 100) + 1);
   const nextLevelPoints = level * 100;
   const levelProgress = Math.min(100, Math.round((stats.approvedPoints / nextLevelPoints) * 100));
@@ -979,8 +1082,8 @@ function ChildProfileModule({ user, stats }) {
       </View>
 
       <View style={styles.profileStatsGrid}>
-        <ProfileStatCard image={icons.profilePending} value={stats.pendingTasks} label="Zadataka na cekanju" />
-        <ProfileStatCard image={icons.profileCompleted} value={stats.approvedTasks} label="Ukupno zavrsenih zadataka" />
+        <ProfileStatCard image={icons.profilePending} value={stats.pendingTasks} label="Zadataka na čekanju" />
+        <ProfileStatCard image={icons.profileCompleted} value={stats.approvedTasks} label="Ukupno završenih zadataka" />
         <ProfileStatCard image={icons.profileStatReward} value={stats.wonRewards} label="Osvojenih nagrada" />
         <ProfileStatCard image={icons.profileStatPoints} value={stats.approvedPoints} label="Osvojenih bodova" />
       </View>
@@ -1014,6 +1117,10 @@ function ChildProfileModule({ user, stats }) {
           ))}
         </View>
       </View>
+
+      <Pressable style={styles.childLogoutButton} onPress={onLogout}>
+        <ChildText style={styles.childLogoutButtonText}>Odjavi se</ChildText>
+      </Pressable>
     </View>
   );
 }
@@ -1031,11 +1138,20 @@ function ProfileStatCard({ image, value, label }) {
 }
 
 function ChildMessagesModal({ visible, currentUser, parentId, messages, draft, isSending, onDraftChange, onSend, onClose }) {
+  const chatScrollRef = useRef(null);
   const currentUserId = currentUser?.id ?? currentUser?.userId;
   const conversationMessages = messages
     .filter((message) => isConversationMessage(message, currentUserId, parentId))
     .filter((message) => !isSystemNotificationMessage(message))
     .sort((first, second) => new Date(first.sentAt) - new Date(second.sentAt));
+
+  useEffect(() => {
+    if (visible && parentId) {
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    }
+  }, [visible, parentId, conversationMessages.length]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -1055,7 +1171,12 @@ function ChildMessagesModal({ visible, currentUser, parentId, messages, draft, i
           ) : (
             <>
               <ChildText style={styles.chatSubtitle}>Razgovor sa roditeljem</ChildText>
-              <ScrollView style={styles.chatMessagesList} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                ref={chatScrollRef}
+                style={styles.chatMessagesList}
+                showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+              >
                 {conversationMessages.length === 0 ? (
                   <View style={styles.chatEmptyBox}>
                     <ChildText style={styles.emptyText}>Još nema poruka. Pošalji prvu poruku!</ChildText>
@@ -1095,7 +1216,7 @@ function ChildMessagesModal({ visible, currentUser, parentId, messages, draft, i
   );
 }
 
-function ChildNotificationsModal({ visible, notifications, onClose, onNotificationPress }) {
+function ChildNotificationsModal({ visible, notifications, readNotificationIds, onClose, onNotificationPress }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -1113,19 +1234,27 @@ function ChildNotificationsModal({ visible, notifications, onClose, onNotificati
             </View>
           ) : (
             <ScrollView style={styles.childNotificationsList} showsVerticalScrollIndicator={false}>
-              {notifications.map((notification) => (
-                <Pressable key={notification.id} style={styles.childNotificationRow} onPress={() => onNotificationPress?.(notification)}>
-                  <View style={styles.childNotificationTypePill}>
-                    <ChildText style={styles.childNotificationTypeText}>{notification.type}</ChildText>
-                  </View>
-                  <View style={styles.childNotificationBody}>
-                    <ChildText style={styles.childNotificationTitle}>{notification.title}</ChildText>
-                    <ChildText style={styles.childNotificationText}>{notification.text}</ChildText>
-                    <ChildText style={styles.childNotificationTime}>{formatMessageTime(notification.date)}</ChildText>
-                  </View>
-                  <Icon source={icons.chevronRight} size={18} color="#8790a7" />
-                </Pressable>
-              ))}
+              {notifications.map((notification) => {
+                const isRead = readNotificationIds.includes(notification.id);
+
+                return (
+                  <Pressable
+                    key={notification.id}
+                    style={[styles.childNotificationRow, isRead && styles.childNotificationRowRead]}
+                    onPress={() => onNotificationPress?.(notification)}
+                  >
+                    <View style={[styles.childNotificationTypePill, isRead && styles.childNotificationTypePillRead]}>
+                      <ChildText style={styles.childNotificationTypeText}>{notification.type}</ChildText>
+                    </View>
+                    <View style={styles.childNotificationBody}>
+                      <ChildText style={[styles.childNotificationTitle, isRead && styles.childNotificationTitleRead]}>{notification.title}</ChildText>
+                      <ChildText style={styles.childNotificationText}>{notification.text}</ChildText>
+                      <ChildText style={styles.childNotificationTime}>{formatMessageTime(notification.date)}</ChildText>
+                    </View>
+                    <Icon source={icons.chevronRight} size={18} color={isRead ? '#b7c0d0' : '#8790a7'} />
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           )}
         </View>
@@ -1136,7 +1265,7 @@ function ChildNotificationsModal({ visible, notifications, onClose, onNotificati
 
 function BottomNavigation({ activeTab, onChangeTab, onNavigateHome, onNavigateMessages }) {
   const items = [
-    { label: 'Pocetna', icon: icons.home, tab: tabs.home, onPress: onNavigateHome },
+    { label: 'Početna', icon: icons.home, tab: tabs.home, onPress: onNavigateHome },
     { label: 'Zadaci', icon: icons.user, tab: tabs.tasks },
     { label: 'Nagrade', icon: icons.gift, tab: tabs.rewards },
     { label: 'Poruke', icon: icons.chat, onPress: onNavigateMessages },
@@ -1427,10 +1556,13 @@ const styles = StyleSheet.create({
   chatSendButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#0065ff', alignItems: 'center', justifyContent: 'center' },
   childNotificationsList: { maxHeight: 430 },
   childNotificationRow: { borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, padding: 12, marginBottom: 10, flexDirection: 'row', backgroundColor: '#fbfdff' },
+  childNotificationRowRead: { backgroundColor: '#f3f6fb', borderColor: '#edf1f7' },
   childNotificationTypePill: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#eaf2ff', paddingHorizontal: 9, paddingVertical: 5, marginRight: 10 },
+  childNotificationTypePillRead: { backgroundColor: '#eef1f6' },
   childNotificationTypeText: { color: '#0065ff', fontSize: 11, fontWeight: '900' },
   childNotificationBody: { flex: 1 },
   childNotificationTitle: { color: '#071e60', fontSize: 15, fontWeight: '900' },
+  childNotificationTitleRead: { color: '#536079' },
   childNotificationText: { color: '#4c5877', fontSize: 13, lineHeight: 18, marginTop: 4 },
   childNotificationTime: { color: '#8790a7', fontSize: 12, marginTop: 6 },
   emptyState: { borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 15, padding: 18, alignItems: 'center' },
@@ -1477,6 +1609,8 @@ const styles = StyleSheet.create({
   profileMedalTitle: { color: '#071e60', fontSize: 12, fontWeight: '900', textAlign: 'center' },
   profileMedalTitleLocked: { color: '#7b879a' },
   profileMedalDescription: { color: '#52607b', fontSize: 10, fontWeight: '800', textAlign: 'center', marginTop: 5 },
+  childLogoutButton: { minHeight: 54, borderRadius: 18, borderWidth: 1.5, borderColor: '#ff4d4f', backgroundColor: '#fff4f4', alignItems: 'center', justifyContent: 'center', marginTop: 16, marginBottom: 10 },
+  childLogoutButtonText: { color: '#d92d20', fontSize: 17, fontWeight: '900' },
   encouragementCard: { minHeight: 92, borderRadius: 22, backgroundColor: '#fff3ba', padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', shadowColor: '#d6a91d', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.14, shadowRadius: 16, elevation: 4 },
   encouragementTextBox: { flex: 1, marginLeft: 12 },
   encouragementTitle: { color: '#2c2f3a', fontSize: 23, fontWeight: '900' },
@@ -1484,7 +1618,7 @@ const styles = StyleSheet.create({
   dailyGoalPill: { minHeight: 62, borderRadius: 14, backgroundColor: '#0065ff', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 9 },
   dailyGoalTitle: { color: '#ffffff', fontSize: 14, fontWeight: '900' },
   dailyGoalText: { color: '#ffffff', fontSize: 12, fontWeight: '700', marginTop: 2 },
-  bottomNav: { position: 'absolute', left: 14, right: 14, bottom: 10, minHeight: 76, paddingTop: 9, paddingBottom: 9, borderRadius: 24, backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 18, elevation: 10 },
+  bottomNav: { position: 'absolute', left: 14, right: 14, bottom: 22, minHeight: 76, paddingTop: 9, paddingBottom: 9, borderRadius: 24, backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 18, elevation: 10 },
   navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 56 },
   navLabel: { color: '#59677f', fontSize: 12, marginTop: 4, fontWeight: '800' },
   navLabelActive: { color: '#0065ff' },
