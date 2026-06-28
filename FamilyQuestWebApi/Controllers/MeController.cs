@@ -6,7 +6,7 @@ namespace FamilyQuestWebApi.Controllers
 {
     [ApiController]
     [Authorize]
-    [Route("api/[controller]")]
+    [Route("api/me")]
     public class MeController : ControllerBase
     {
         private readonly IMeService _meService;
@@ -37,6 +37,24 @@ namespace FamilyQuestWebApi.Controllers
             {
                 ServiceErrorType.NotFound => NotFound(result.ErrorMessage),
                 ServiceErrorType.Conflict => Conflict(result.ErrorMessage),
+                _ => BadRequest(result.ErrorMessage)
+            };
+        }
+
+        [HttpPatch("children/{childId:int}")]
+        public async Task<ActionResult<ParentChildResponse>> UpdateChildProfile(int childId, UpdateChildProfileRequest request)
+        {
+            var result = await _meService.UpdateChildProfileAsync(childId, request);
+
+            if (result.IsSuccess)
+            {
+                return Ok(result.Value);
+            }
+
+            return result.ErrorType switch
+            {
+                ServiceErrorType.NotFound => NotFound(result.ErrorMessage),
+                ServiceErrorType.Forbidden => StatusCode(StatusCodes.Status403Forbidden, result.ErrorMessage),
                 _ => BadRequest(result.ErrorMessage)
             };
         }

@@ -22,6 +22,11 @@ async function requestJson({ path, method = 'POST', body, token, errorMessage })
 
     if (!response.ok) {
       const errorText = await response.text();
+
+      if (path === '/api/auth/login' && [400, 401, 404].includes(response.status)) {
+        throw new Error('Neispravno korisničko ime ili šifra.');
+      }
+
       throw new Error(errorText || errorMessage);
     }
 
@@ -61,7 +66,7 @@ export async function loginUser({ identifier, email, password }) {
       identifier: loginIdentifier,
       password,
     },
-    errorMessage: 'Prijava nije uspjela. Provjerite korisnicko ime/e-mail i lozinku.',
+    errorMessage: 'Neispravno korisničko ime ili šifra.',
   });
 }
 

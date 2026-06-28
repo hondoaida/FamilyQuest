@@ -85,6 +85,14 @@ export default function App() {
     });
   };
 
+  const handleLogout = () => {
+    setAuthSession(null);
+    setSelectedChildIdForChildren(null);
+    setOpenRewardsOnChildren(false);
+    setOpenMessagesOnParentHome(false);
+    setCurrentRoute(routes.login);
+  };
+
   if (currentRoute === routes.addChild) {
     const onBack = addChildReturnRoute === routes.children ? navigateToChildren : navigateToParentHome;
     return <AddChildScreen token={authSession?.token} onBack={onBack} />;
@@ -108,7 +116,7 @@ export default function App() {
   }
 
   if (currentRoute === routes.childHome) {
-    return <ChildHomeScreen token={authSession?.token} user={authSession?.user} onNavigateHome={navigateToHome} />;
+    return <ChildHomeScreen token={authSession?.token} user={authSession?.user} onNavigateHome={navigateToHome} onLogout={handleLogout} />;
   }
 
   if (currentRoute === routes.parentHome) {
@@ -137,6 +145,7 @@ export default function App() {
         onNavigateToChildren={navigateToChildren}
         onNavigateToRewards={navigateToRewards}
         onNavigateToMessages={navigateToMessages}
+        onLogout={handleLogout}
       />
     );
   }

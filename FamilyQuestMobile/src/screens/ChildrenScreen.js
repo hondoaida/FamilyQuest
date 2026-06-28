@@ -9,7 +9,8 @@ import { getRewardRequests, REWARD_REQUEST_STATUSES } from '../services/rewardRe
 import { createReward, getRewards, updateReward } from '../services/rewardService';
 import { getRewardSuggestions, REWARD_SUGGESTION_STATUSES, updateRewardSuggestionStatus } from '../services/rewardSuggestionService';
 import { createTask, getTasks, TASK_STATUSES, updateTaskStatus } from '../services/taskService';
-import { getChildAvatarSource } from '../utils/childAvatars';
+import { updateChildProfile } from '../services/profileService';
+import { childAvatarOptions, getChildAvatarSource } from '../utils/childAvatars';
 import { getParentAvatarSource } from '../utils/parentAvatars';
 
 const icons = {
@@ -22,7 +23,7 @@ const icons = {
   pencil: require('../../assets/home-icons/pencil.png'),
   plusCircle: require('../../assets/home-icons/plus-circle.png'),
   profile: require('../../assets/home-icons/profile.png'),
-  star: require('../../assets/home-icons/star.png'),
+  star: require('../../assets/child-home/star.png'),
   user: require('../../assets/home-icons/user.png'),
 };
 
@@ -97,6 +98,7 @@ export function ChildrenScreen({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isAddTaskVisible, setIsAddTaskVisible] = useState(false);
+  const [isTasksListVisible, setIsTasksListVisible] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [tasksError, setTasksError] = useState('');
@@ -116,6 +118,8 @@ export function ChildrenScreen({
   const [reviewingSuggestionId, setReviewingSuggestionId] = useState(null);
   const [isUpdatingReward, setIsUpdatingReward] = useState(false);
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
+  const [selectedChildProfile, setSelectedChildProfile] = useState(null);
+  const [isUpdatingChildProfile, setIsUpdatingChildProfile] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -518,6 +522,34 @@ export function ChildrenScreen({
       setIsUpdatingTask(false);
     }
   };
+
+  const handleUpdateChildProfile = async ({ child, avatarKey, newPassword }) => {
+    if (!token || !child) {
+      return;
+    }
+
+    setIsUpdatingChildProfile(true);
+
+    try {
+      const updatedChild = await updateChildProfile({
+        token,
+        childId: getChildUserId(child),
+        avatarKey,
+        newPassword,
+      });
+
+      setChildren((currentChildren) => currentChildren.map((currentChild) => (
+        sameId(getChildUserId(currentChild), updatedChild.childId) ? updatedChild : currentChild
+      )));
+      setSelectedChildProfile(null);
+      Alert.alert('Profil djeteta je sačuvan', 'Promjene su uspješno sačuvane.');
+    } catch (error) {
+      Alert.alert('Greška', error.message || 'Spremanje profila djeteta nije uspjelo.');
+    } finally {
+      setIsUpdatingChildProfile(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -599,7 +631,7 @@ export function ChildrenScreen({
                 <View style={styles.heroInfo}>
                   <View style={styles.nameRow}>
                     <Text style={styles.heroName}>{selectedChild.childName}</Text>
-                    <Pressable style={styles.editButton} hitSlop={10}>
+                    <Pressable style={styles.editButton} onPress={() => setSelectedChildProfile(selectedChild)} hitSlop={10}>
                       <Icon source={icons.pencil} size={19} color="#0065ff" />
                     </Pressable>
                   </View>
@@ -615,7 +647,13 @@ export function ChildrenScreen({
                 </View>
               </View>
 
-              <Card title="Dodijeljeni zadaci" icon={icons.clipboard} color="#0065ff">
+              <Card
+                title="Dodijeljeni zadaci"
+                icon={icons.clipboard}
+                color="#0065ff"
+                actionText="Pogledaj sve"
+                onActionPress={() => setIsTasksListVisible(true)}
+              >
                 {isLoadingTasks ? (
                   <View style={styles.taskStateBox}>
                     <ActivityIndicator color="#0065ff" />
@@ -724,6 +762,17 @@ export function ChildrenScreen({
           onApprove={() => handleUpdateTaskStatus(TASK_STATUSES.approved)}
           onReject={() => handleUpdateTaskStatus(TASK_STATUSES.rejected)}
         />
+        <TasksListModal
+          visible={isTasksListVisible}
+          tasks={visibleAssignedTasks}
+          isLoading={isLoadingTasks}
+          errorMessage={tasksError}
+          onClose={() => setIsTasksListVisible(false)}
+          onTaskPress={(task) => {
+            setIsTasksListVisible(false);
+            setSelectedTask(task);
+          }}
+        />
         <AddTaskModal
           visible={isAddTaskVisible}
           child={selectedChild}
@@ -765,8 +814,156 @@ export function ChildrenScreen({
           notifications={notifications}
           onClose={() => setIsNotificationsVisible(false)}
         />
+        <ChildProfileEditModal
+          visible={Boolean(selectedChildProfile)}
+          child={selectedChildProfile}
+          isSubmitting={isUpdatingChildProfile}
+          onClose={() => setSelectedChildProfile(null)}
+          onSubmit={handleUpdateChildProfile}
+        />
       </View>
     </SafeAreaView>
+  );
+}
+
+function ChildProfileEditModal({ visible, child, isSubmitting, onClose, onSubmit }) {
+  const initialAvatar = useMemo(
+    () => childAvatarOptions.find((avatar) => avatar.key === child?.childAvatarKey) ?? childAvatarOptions[0],
+    [child?.childAvatarKey],
+  );
+  const [selectedAvatar, setSelectedAvatar] = useState(initialAvatar);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    setSelectedAvatar(initialAvatar);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setErrorMessage('');
+  }, [initialAvatar, visible]);
+
+  const passwordsDoNotMatch = Boolean(newPassword && confirmPassword && newPassword !== confirmPassword);
+
+  const handleSubmit = () => {
+    setErrorMessage('');
+
+    if (newPassword || confirmPassword) {
+      if (!newPassword || !confirmPassword) {
+        setErrorMessage('Unesite novu i ponovljenu šifru.');
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        setErrorMessage('Nova šifra mora imati najmanje 8 karaktera.');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        setErrorMessage('Nova šifra i ponovljena šifra nisu iste.');
+        return;
+      }
+    }
+
+    onSubmit({
+      child,
+      avatarKey: selectedAvatar.key,
+      newPassword: newPassword || undefined,
+    });
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.childProfileModalCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Profil djeteta</Text>
+            <Pressable onPress={onClose} disabled={isSubmitting} hitSlop={10}>
+              <Text style={styles.modalClose}>×</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView style={styles.childProfileForm} showsVerticalScrollIndicator={false}>
+            <View style={styles.childProfileHero}>
+              <Image source={getChildAvatarSource(selectedAvatar.key)} style={styles.childProfileAvatar} />
+              <Text style={styles.childProfileName}>{child?.childName || 'Dijete'}</Text>
+            </View>
+
+            <Text style={styles.childProfileSectionTitle}>Ikona djeteta</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.childAvatarEditRow}>
+              {childAvatarOptions.map((avatar) => {
+                const isSelected = selectedAvatar.key === avatar.key;
+
+                return (
+                  <Pressable
+                    key={avatar.key}
+                    style={[styles.childAvatarEditOption, isSelected && styles.childAvatarEditOptionSelected]}
+                    onPress={() => setSelectedAvatar(avatar)}
+                    disabled={isSubmitting}
+                  >
+                    <Image source={avatar.source} style={styles.childAvatarEditImage} resizeMode="cover" />
+                    <Text style={[styles.childAvatarEditLabel, isSelected && styles.childAvatarEditLabelSelected]}>{avatar.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={styles.childProfileSectionTitle}>Promjena šifre</Text>
+            <PasswordEditInput
+              value={newPassword}
+              onChangeText={setNewPassword}
+              isVisible={showNewPassword}
+              onToggleVisibility={() => setShowNewPassword((current) => !current)}
+              placeholder="Nova šifra"
+              editable={!isSubmitting}
+            />
+            <PasswordEditInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              isVisible={showConfirmPassword}
+              onToggleVisibility={() => setShowConfirmPassword((current) => !current)}
+              placeholder="Ponovi novu sifru"
+              editable={!isSubmitting}
+            />
+
+            {passwordsDoNotMatch ? <Text style={styles.childProfileMismatch}>Nova šifra i ponovljena šifra nisu iste.</Text> : null}
+            {errorMessage ? <Text style={styles.childProfileError}>{errorMessage}</Text> : null}
+          </ScrollView>
+
+          <View style={styles.modalActionsRow}>
+            <Pressable style={[styles.rejectButton, isSubmitting && styles.disabledButton]} onPress={onClose} disabled={isSubmitting}>
+              <Text style={styles.rejectButtonText}>Odustani</Text>
+            </Pressable>
+            <Pressable style={[styles.approveButton, isSubmitting && styles.disabledButton]} onPress={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.approveButtonText}>Sačuvaj</Text>}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function PasswordEditInput({ value, onChangeText, isVisible, onToggleVisibility, placeholder, editable }) {
+  return (
+    <View style={styles.childPasswordInputRow}>
+      <TextInput
+        style={styles.childPasswordInput}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={!isVisible}
+        placeholder={placeholder}
+        placeholderTextColor="#9aa6bd"
+        editable={editable}
+      />
+      <Pressable style={styles.childPasswordToggle} onPress={onToggleVisibility} disabled={!editable}>
+        <Text style={styles.childPasswordToggleText}>{isVisible ? 'Sakrij' : 'Prikaži'}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -1148,6 +1345,59 @@ function NotificationsModal({ visible, notifications, onClose }) {
   );
 }
 
+function TasksListModal({ visible, tasks, isLoading, errorMessage, onClose, onTaskPress }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.tasksModalCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Svi zadaci</Text>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.modalClose}>×</Text>
+            </Pressable>
+          </View>
+
+          {isLoading ? (
+            <View style={styles.taskStateBox}>
+              <ActivityIndicator color="#0065ff" />
+              <Text style={styles.stateText}>Učitavanje zadataka...</Text>
+            </View>
+          ) : null}
+
+          {errorMessage ? <Text style={styles.taskErrorText}>{errorMessage}</Text> : null}
+
+          {!isLoading && !errorMessage && tasks.length === 0 ? (
+            <View style={styles.taskStateBox}>
+              <Text style={styles.emptyTitle}>Nema dodijeljenih zadataka.</Text>
+              <Text style={styles.emptyText}>Dodajte zadatak da bi se ovdje prikazao.</Text>
+            </View>
+          ) : null}
+
+          {tasks.length > 0 ? (
+            <ScrollView style={styles.tasksModalList} showsVerticalScrollIndicator={false}>
+              {tasks.map((task) => (
+                <Pressable key={task.id} style={styles.modalTaskRow} onPress={() => onTaskPress?.(task)}>
+                  <View style={[styles.taskImageBox, { backgroundColor: task.color }]}>
+                    <Image source={task.image} style={styles.taskImage} resizeMode="contain" />
+                  </View>
+                  <View style={styles.taskBody}>
+                    <Text style={styles.taskTitle}>{task.title}</Text>
+                    <View style={styles.taskPointsRow}>
+                      <Icon source={icons.star} size={17} color="#ffc20e" />
+                      <Text style={styles.taskPoints}>{getTaskPoints(task)} bodova</Text>
+                    </View>
+                  </View>
+                  <StatusPill status={task.status} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function TaskDetailsModal({ task, isUpdating, onClose, onApprove, onReject }) {
   if (!task) {
     return null;
@@ -1311,7 +1561,50 @@ function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateReward
 }
 
 function Icon({ source, size, color }) {
+  if (source === icons.clipboard) {
+    return <ClipboardIcon size={size} color={color} />;
+  }
+
   return <Image source={source} style={{ width: size, height: size, tintColor: color }} resizeMode="contain" />;
+}
+
+function ClipboardIcon({ size, color }) {
+  const lineHeight = Math.max(2, size * 0.09);
+  const borderWidth = Math.max(1.5, size * 0.08);
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: size * 0.18,
+          width: size * 0.68,
+          height: size * 0.7,
+          borderWidth,
+          borderColor: color,
+          borderRadius: size * 0.12,
+          paddingTop: size * 0.23,
+          alignItems: 'center',
+          gap: size * 0.1,
+        }}
+      >
+        <View style={{ width: size * 0.37, height: lineHeight, borderRadius: lineHeight, backgroundColor: color }} />
+        <View style={{ width: size * 0.37, height: lineHeight, borderRadius: lineHeight, backgroundColor: color }} />
+      </View>
+      <View
+        style={{
+          position: 'absolute',
+          top: size * 0.04,
+          width: size * 0.38,
+          height: size * 0.25,
+          borderWidth,
+          borderColor: color,
+          borderRadius: size * 0.12,
+          backgroundColor: '#ffffff',
+        }}
+      />
+    </View>
+  );
 }
 
 function isTaskStatus(status, numericValue, textValue) {
@@ -1476,6 +1769,24 @@ const styles = StyleSheet.create({
   rewardSuggestionModalCard: { width: '100%', maxWidth: 390, borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   rewardEditModalCard: { width: '100%', maxWidth: 390, maxHeight: '88%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   rewardEditForm: { maxHeight: 520, marginBottom: 14 },
+  childProfileModalCard: { width: '100%', maxWidth: 390, maxHeight: '88%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
+  childProfileForm: { maxHeight: 520, marginBottom: 14 },
+  childProfileHero: { alignItems: 'center', marginBottom: 16 },
+  childProfileAvatar: { width: 104, height: 104, borderRadius: 52, backgroundColor: '#dfe5ff', marginBottom: 10 },
+  childProfileName: { color: '#071e60', fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  childProfileSectionTitle: { color: '#071e60', fontSize: 16, fontWeight: '900', marginBottom: 10 },
+  childAvatarEditRow: { gap: 10, paddingBottom: 16, paddingRight: 2 },
+  childAvatarEditOption: { width: 78, minHeight: 94, borderRadius: 14, borderWidth: 1, borderColor: '#dce3ef', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: '#ffffff' },
+  childAvatarEditOptionSelected: { borderColor: '#0065ff', backgroundColor: '#eef5ff' },
+  childAvatarEditImage: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#dfe5ff' },
+  childAvatarEditLabel: { color: '#536079', fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 6 },
+  childAvatarEditLabelSelected: { color: '#0065ff' },
+  childPasswordInputRow: { minHeight: 52, borderWidth: 1, borderColor: '#dce3ef', borderRadius: 13, backgroundColor: '#fbfdff', marginBottom: 12, flexDirection: 'row', alignItems: 'center' },
+  childPasswordInput: { flex: 1, minHeight: 52, paddingHorizontal: 15, color: '#071e60', fontSize: 16, fontWeight: '600' },
+  childPasswordToggle: { minHeight: 52, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  childPasswordToggleText: { color: '#0065ff', fontSize: 13, fontWeight: '900' },
+  childProfileMismatch: { color: '#d92d20', fontSize: 13, fontWeight: '800', marginTop: -4, marginBottom: 8 },
+  childProfileError: { color: '#d92d20', fontSize: 13, fontWeight: '800', textAlign: 'center', marginBottom: 8 },
   notificationsModalCard: { width: '100%', maxWidth: 390, maxHeight: '78%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   modalHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
   modalTitle: { color: '#071e60', fontSize: 24, fontWeight: '800' },
@@ -1502,6 +1813,8 @@ const styles = StyleSheet.create({
   modalHint: { color: '#4c5877', fontSize: 14, textAlign: 'center' },
   suggestionReviewRow: { minHeight: 92, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, padding: 12, marginBottom: 16, backgroundColor: '#fbfdff' },
   pointsInput: { minHeight: 52, borderWidth: 1, borderColor: '#dce3ef', borderRadius: 13, paddingHorizontal: 14, color: '#071e60', fontSize: 17, fontWeight: '800', backgroundColor: '#fbfdff', marginTop: 8, marginBottom: 16 },
+  tasksModalCard: { width: '100%', maxWidth: 390, maxHeight: '78%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
+  tasksModalList: { maxHeight: 430 },
   rewardsModalCard: { width: '100%', maxWidth: 390, maxHeight: '78%', borderRadius: 18, backgroundColor: '#ffffff', padding: 20, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
   rewardsModalList: { maxHeight: 430 },
   rewardListRow: { minHeight: 86, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, padding: 12, marginBottom: 10, backgroundColor: '#ffffff' },
@@ -1536,7 +1849,7 @@ const styles = StyleSheet.create({
   notificationTitle: { color: '#071e60', fontSize: 15, fontWeight: '900' },
   notificationText: { color: '#4c5877', fontSize: 13, lineHeight: 18, marginTop: 4 },
   notificationTime: { color: '#8790a7', fontSize: 12, marginTop: 6 },
-  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
+  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 12, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
   navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 56 },
   navLabel: { color: '#46536c', fontSize: 12, marginTop: 4, fontWeight: '600' },
   navLabelActive: { color: '#0065ff' },

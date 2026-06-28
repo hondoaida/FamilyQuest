@@ -3,8 +3,7 @@ import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Tex
 
 const icons = {
   chevronRight: require('../../assets/home-icons/chevron-right.png'),
-  clipboard: require('../../assets/home-icons/clipboard.png'),
-  star: require('../../assets/home-icons/star.png'),
+  star: require('../../assets/child-home/star.png'),
   bell: require('../../assets/home-icons/bell.png'),
 };
 
@@ -126,7 +125,7 @@ export function AddTaskModal({ visible, child, onClose, onSubmit }) {
           </View>
 
           <FieldFrame label="Naziv zadatka">
-            <Icon source={icons.clipboard} size={31} color="#536079" />
+            <ClipboardIcon size={31} color="#536079" />
             <TextInput
               style={styles.input}
               value={taskName}
@@ -241,6 +240,19 @@ function Icon({ source, size, color }) {
   return <Image source={source} style={{ width: size, height: size, tintColor: color }} resizeMode="contain" />;
 }
 
+function ClipboardIcon({ size, color }) {
+  const scale = size / 31;
+
+  return (
+    <View style={[styles.clipboardIcon, { width: size, height: size, borderColor: color, borderRadius: 5 * scale }]}>
+      <View style={[styles.clipboardClip, { width: 13 * scale, height: 5 * scale, borderColor: color, top: -3 * scale }]} />
+      <View style={[styles.clipboardLine, { width: 14 * scale, backgroundColor: color, marginTop: 8 * scale }]} />
+      <View style={[styles.clipboardLine, { width: 18 * scale, backgroundColor: color }]} />
+      <View style={[styles.clipboardLine, { width: 11 * scale, backgroundColor: color }]} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.42)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   modalCard: { width: '100%', maxWidth: 390, borderRadius: 18, backgroundColor: '#ffffff', paddingHorizontal: 22, paddingTop: 22, paddingBottom: 22, shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.16, shadowRadius: 24, elevation: 10 },
@@ -277,4 +289,7 @@ const styles = StyleSheet.create({
   primaryButton: { flex: 1, height: 54, borderRadius: 10, backgroundColor: '#0065ff', alignItems: 'center', justifyContent: 'center', shadowColor: '#0065ff', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 5 },
   disabledButton: { opacity: 0.7 },
   primaryButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
+  clipboardIcon: { alignItems: 'center', borderWidth: 2, justifyContent: 'flex-start', paddingTop: 3 },
+  clipboardClip: { position: 'absolute', alignSelf: 'center', backgroundColor: '#ffffff', borderRadius: 3, borderWidth: 2 },
+  clipboardLine: { height: 2, borderRadius: 2, marginTop: 4 },
 });

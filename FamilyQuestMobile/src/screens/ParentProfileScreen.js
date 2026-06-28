@@ -21,6 +21,7 @@ export function ParentProfileScreen({
   onNavigateToChildren,
   onNavigateToRewards,
   onNavigateToMessages,
+  onLogout,
 }) {
   const initialAvatar = useMemo(
     () => parentAvatarOptions.find((avatar) => avatar.key === user?.avatarKey) ?? parentAvatarOptions[0],
@@ -47,17 +48,17 @@ export function ParentProfileScreen({
 
     if (newPassword || confirmPassword || currentPassword) {
       if (!currentPassword || !newPassword || !confirmPassword) {
-        setError('Za promjenu sifre unesite trenutnu, novu i ponovljenu sifru.');
+        setError('Za promjenu šifre unesite trenutnu, novu i ponovljenu šifru.');
         return;
       }
 
       if (newPassword.length < 8) {
-        setError('Nova sifra mora imati najmanje 8 karaktera.');
+        setError('Nova šifra mora imati najmanje 8 karaktera.');
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        setError('Nova sifra i ponovljena sifra nisu iste.');
+        setError('Nova šifra i ponovljena šifra nisu iste.');
         return;
       }
     }
@@ -77,7 +78,7 @@ export function ParentProfileScreen({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setMessage('Profil je uspjesno sacuvan.');
+      setMessage('Profil je uspješno sačuvan.');
     } catch (saveError) {
       setError(saveError.message || 'Spremanje profila nije uspjelo.');
     } finally {
@@ -128,36 +129,40 @@ export function ParentProfileScreen({
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Promjena sifre</Text>
+            <Text style={styles.sectionTitle}>Promjena šifre</Text>
             <PasswordInput
               value={currentPassword}
               onChangeText={setCurrentPassword}
               isVisible={showCurrentPassword}
               onToggleVisibility={() => setShowCurrentPassword((isVisible) => !isVisible)}
-              placeholder="Trenutna sifra"
+              placeholder="Trenutna šifra"
             />
             <PasswordInput
               value={newPassword}
               onChangeText={setNewPassword}
               isVisible={showNewPassword}
               onToggleVisibility={() => setShowNewPassword((isVisible) => !isVisible)}
-              placeholder="Nova sifra"
+              placeholder="Nova šifra"
             />
             <PasswordInput
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               isVisible={showConfirmPassword}
               onToggleVisibility={() => setShowConfirmPassword((isVisible) => !isVisible)}
-              placeholder="Ponovi novu sifru"
+              placeholder="Ponovi novu šifru"
             />
-            {passwordsDoNotMatch ? <Text style={styles.passwordMismatchText}>Nova sifra i ponovljena sifra nisu iste.</Text> : null}
+            {passwordsDoNotMatch ? <Text style={styles.passwordMismatchText}>Nova šifra i ponovljena šifra nisu iste.</Text> : null}
           </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {message ? <Text style={styles.successText}>{message}</Text> : null}
 
           <Pressable style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} onPress={handleSave} disabled={isSaving}>
-            {isSaving ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>Sacuvaj promjene</Text>}
+            {isSaving ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>Sačuvaj promjene</Text>}
+          </Pressable>
+
+          <Pressable style={styles.logoutButton} onPress={onLogout}>
+            <Text style={styles.logoutButtonText}>Odjavi se</Text>
           </Pressable>
         </ScrollView>
 
@@ -184,7 +189,7 @@ function PasswordInput({ value, onChangeText, isVisible, onToggleVisibility, pla
         placeholderTextColor="#9aa6bd"
       />
       <Pressable style={styles.passwordToggle} onPress={onToggleVisibility}>
-        <Text style={styles.passwordToggleText}>{isVisible ? 'Sakrij' : 'Prikazi'}</Text>
+        <Text style={styles.passwordToggleText}>{isVisible ? 'Sakrij' : 'Prikaži'}</Text>
       </Pressable>
     </View>
   );
@@ -243,7 +248,9 @@ const styles = StyleSheet.create({
   saveButton: { minHeight: 56, borderRadius: 15, backgroundColor: '#0065ff', alignItems: 'center', justifyContent: 'center', shadowColor: '#0065ff', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 6 },
   saveButtonDisabled: { opacity: 0.72 },
   saveButtonText: { color: '#ffffff', fontSize: 17, fontWeight: '900' },
-  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
+  logoutButton: { minHeight: 54, borderRadius: 15, borderWidth: 1.5, borderColor: '#d92d20', alignItems: 'center', justifyContent: 'center', marginTop: 14, backgroundColor: '#fff7f7' },
+  logoutButtonText: { color: '#d92d20', fontSize: 17, fontWeight: '900' },
+  bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 12, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
   navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 56 },
   navLabel: { color: '#46536c', fontSize: 12, marginTop: 4, fontWeight: '600' },
   navLabelActive: { color: '#0065ff' },
