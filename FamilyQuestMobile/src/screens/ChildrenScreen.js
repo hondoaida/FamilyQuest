@@ -1,6 +1,7 @@
 ﻿import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddRewardModal } from '../components/AddRewardModal';
 import { AddTaskModal } from '../components/AddTaskModal';
@@ -93,6 +94,7 @@ export function ChildrenScreen({
   openRewardsOnStart,
   onRewardsOpened,
 }) {
+  const insets = useSafeAreaInsets();
   const [children, setChildren] = useState([]);
   const [selectedChildId, setSelectedChildId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -749,6 +751,7 @@ export function ChildrenScreen({
         </ScrollView>
 
         <BottomNavigation
+          bottomInset={insets.bottom}
           onNavigateHome={onNavigateHome}
           onNavigateChildren={() => {}}
           onNavigateRewards={() => setIsRewardsListVisible(true)}
@@ -1539,7 +1542,7 @@ function RewardsListModal({ visible, rewards, suggestions = [], isLoading, error
   );
 }
 
-function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
+function BottomNavigation({ bottomInset, onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
   const items = [
     { label: 'Početna', icon: icons.home, active: true, onPress: onNavigateHome },
     { label: 'Djeca', icon: icons.user, onPress: onNavigateChildren },
@@ -1549,7 +1552,7 @@ function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateReward
   ];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { bottom: Math.max(bottomInset, 8), paddingBottom: 12 + Math.max(bottomInset - 8, 0) }]}>
       {items.map((item) => (
         <Pressable key={item.label} style={styles.navItem} onPress={() => item.onPress?.()}>
           <Icon source={item.icon} size={28} color={item.active ? '#0065ff' : '#46536c'} />

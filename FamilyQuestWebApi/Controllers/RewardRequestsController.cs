@@ -46,7 +46,7 @@ namespace FamilyQuestWebApi.Controllers
 
         [HttpPut("{id:int}/status")]
         [Authorize(Roles = "Parent,Admin")]
-        public async Task<IActionResult> UpdateRewardRequestStatus(int id, UpdateRewardRequestStatusRequest request)
+        public async Task<ActionResult<RewardRequestResponse>> UpdateRewardRequestStatus(int id, UpdateRewardRequestStatusRequest request)
         {
             var result = await _rewardRequestService.UpdateRewardRequestStatusAsync(id, request);
             return ToActionResult(result);
@@ -68,20 +68,5 @@ namespace FamilyQuestWebApi.Controllers
             };
         }
 
-        private IActionResult ToActionResult(ServiceResult<bool> result)
-        {
-            if (result.IsSuccess)
-            {
-                return NoContent();
-            }
-
-            return result.ErrorType switch
-            {
-                ServiceErrorType.NotFound => NotFound(),
-                ServiceErrorType.Forbidden => Forbid(),
-                ServiceErrorType.Conflict => Conflict(result.ErrorMessage),
-                _ => BadRequest(result.ErrorMessage)
-            };
-        }
     }
 }
