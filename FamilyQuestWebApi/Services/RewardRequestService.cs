@@ -1,6 +1,8 @@
 using FamilyQuestWebApi.Data;
+using FamilyQuestWebApi.Hubs;
 using FamilyQuestWebApi.Models.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 
 namespace FamilyQuestWebApi.Services
 {
@@ -8,11 +10,16 @@ namespace FamilyQuestWebApi.Services
     {
         private readonly FamilyQuestDbContext _dbContext;
         private readonly ICurrentUserService _currentUserService;
+        private readonly IHubContext<ChatHub> _chatHubContext;
 
-        public RewardRequestService(FamilyQuestDbContext dbContext, ICurrentUserService currentUserService)
+        public RewardRequestService(
+            FamilyQuestDbContext dbContext,
+            ICurrentUserService currentUserService,
+            IHubContext<ChatHub> chatHubContext)
         {
             _dbContext = dbContext;
             _currentUserService = currentUserService;
+            _chatHubContext = chatHubContext;
         }
 
         public async Task<IEnumerable<RewardRequestResponse>> GetRewardRequestsAsync()
@@ -78,11 +85,9 @@ namespace FamilyQuestWebApi.Services
                 return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Forbidden, "You can request only your own rewards.");
             }
 
-            var approvedPoints = await _dbContext.Tasks
-                .Where(task => task.ChildId == _currentUserService.UserId && task.Status == FamilyQuestWebApi.Models.Entities.TaskStatus.Approved)
-                .SumAsync(task => task.Points);
+            var availablePoints = await GetAvailablePointsAsync(_currentUserService.UserId);
 
-            if (approvedPoints < reward.RequiredPoints)
+            if (availablePoints < reward.RequiredPoints)
             {
                 return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.BadRequest, "You do not have enough points for this reward.");
             }
@@ -108,32 +113,70 @@ namespace FamilyQuestWebApi.Services
             _dbContext.RewardRequests.Add(rewardRequest);
             await _dbContext.SaveChangesAsync();
 
-            return ServiceResult<RewardRequestResponse>.Success(ToResponse(rewardRequest));
+            var response = ToResponse(rewardRequest);
+            var parentIds = await _dbContext.ParentChildren
+                .Where(parentChild => parentChild.ChildId == rewardRequest.ChildId)
+                .Select(parentChild => parentChild.ParentId)
+                .ToListAsync();
+
+            foreach (var parentId in parentIds)
+            {
+                await _chatHubContext.Clients
+                    .Group(ChatHub.GetUserGroupName(parentId))
+                    .SendAsync("RewardRequestCreated", response);
+            }
+
+            return ServiceResult<RewardRequestResponse>.Success(response);
         }
 
-        public async Task<ServiceResult<bool>> UpdateRewardRequestStatusAsync(int id, UpdateRewardRequestStatusRequest request)
+        public async Task<ServiceResult<RewardRequestResponse>> UpdateRewardRequestStatusAsync(int id, UpdateRewardRequestStatusRequest request)
         {
             if (_currentUserService.Role == UserRole.Child)
             {
-                return ServiceResult<bool>.Failure(ServiceErrorType.Forbidden, "Child cannot approve or reject reward requests.");
+                return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Forbidden, "Child cannot approve or reject reward requests.");
             }
 
             var rewardRequest = await _dbContext.RewardRequests.FindAsync(id);
 
             if (rewardRequest == null)
             {
-                return ServiceResult<bool>.Failure(ServiceErrorType.NotFound);
+                return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.NotFound);
             }
 
             if (_currentUserService.Role == UserRole.Parent && !await IsParentOfChildAsync(_currentUserService.UserId, rewardRequest.ChildId))
             {
-                return ServiceResult<bool>.Failure(ServiceErrorType.Forbidden, "You can update only reward requests from your own child.");
+                return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Forbidden, "You can update only reward requests from your own child.");
             }
 
             rewardRequest.Status = request.Status;
             await _dbContext.SaveChangesAsync();
 
-            return ServiceResult<bool>.Success(true);
+            var response = ToResponse(rewardRequest);
+
+            await _chatHubContext.Clients
+                .Group(ChatHub.GetUserGroupName(rewardRequest.ChildId))
+                .SendAsync("RewardRequestUpdated", response);
+
+            return ServiceResult<RewardRequestResponse>.Success(response);
+        }
+
+        private async Task<int> GetAvailablePointsAsync(int childId)
+        {
+            var approvedPoints = await _dbContext.Tasks
+                .Where(task => task.ChildId == childId && task.Status == FamilyQuestWebApi.Models.Entities.TaskStatus.Approved)
+                .SumAsync(task => task.Points);
+
+            var reservedOrSpentPoints = await _dbContext.RewardRequests
+                .Where(request => request.ChildId == childId
+                    && (request.Status == global::RewardRequestStatus.Pending || request.Status == global::RewardRequestStatus.Approved))
+                .Join(
+                    _dbContext.Rewards,
+                    request => request.RewardId,
+                    reward => reward.Id,
+                    (request, reward) => reward.RequiredPoints)
+                .SumAsync();
+
+            return Math.Max(approvedPoints - reservedOrSpentPoints, 0);
         }
 
         private async Task<bool> CanAccessChildAsync(int childId)

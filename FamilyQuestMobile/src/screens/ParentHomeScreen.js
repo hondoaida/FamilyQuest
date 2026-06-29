@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getMyChildren } from '../services/childrenService';
 import { getMyMessages, sendMessage } from '../services/messageService';
@@ -22,6 +23,7 @@ const icons = {
   gift: require('../../assets/home-icons/gift.png'),
   trophy: require('../../assets/home-icons/trophy.png'),
   star: require('../../assets/home-icons/star.png'),
+  pointsStar: require('../../assets/child-home/star.png'),
   medal: require('../../assets/home-icons/medal.png'),
   chat: require('../../assets/home-icons/chat.png'),
   send: require('../../assets/home-icons/send.png'),
@@ -33,6 +35,7 @@ const icons = {
 };
 
 const READ_NOTIFICATIONS_STORAGE_PREFIX = 'familyquest:parent:read-notifications';
+const READ_MESSAGES_STORAGE_PREFIX = 'familyquest:parent:read-messages';
 
 const rewardIconSources = {
   gamepad: { image: require('../../assets/reward-items/gamepad.png'), color: '#eee4ff' },
@@ -80,6 +83,7 @@ export function ParentHomeScreen({
   openMessagesOnStart,
   onMessagesOpened,
 }) {
+  const insets = useSafeAreaInsets();
   const [children, setChildren] = useState([]);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   const [childrenError, setChildrenError] = useState('');
@@ -94,7 +98,7 @@ export function ParentHomeScreen({
   const [messagesError, setMessagesError] = useState('');
   const [isMessagesVisible, setIsMessagesVisible] = useState(false);
   const [selectedMessageChildId, setSelectedMessageChildId] = useState(null);
-  const [readMessageChildIds, setReadMessageChildIds] = useState([]);
+  const [readMessageIdsByChild, setReadMessageIdsByChild] = useState({});
   const [messageDraft, setMessageDraft] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [rewardRequests, setRewardRequests] = useState([]);
@@ -113,6 +117,7 @@ export function ParentHomeScreen({
   const [readNotificationIds, setReadNotificationIds] = useState([]);
   const currentUserId = user?.id ?? user?.userId;
   const readNotificationsStorageKey = `${READ_NOTIFICATIONS_STORAGE_PREFIX}:${currentUserId ?? 'anonymous'}`;
+  const readMessagesStorageKey = `${READ_MESSAGES_STORAGE_PREFIX}:${currentUserId ?? 'anonymous'}`;
 
   useEffect(() => {
     let isMounted = true;
@@ -142,6 +147,35 @@ export function ParentHomeScreen({
       isMounted = false;
     };
   }, [currentUserId, readNotificationsStorageKey]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadReadMessages = async () => {
+      if (!currentUserId) {
+        setReadMessageIdsByChild({});
+        return;
+      }
+
+      try {
+        const storedMessages = await AsyncStorage.getItem(readMessagesStorageKey);
+
+        if (isMounted) {
+          setReadMessageIdsByChild(storedMessages ? JSON.parse(storedMessages) : {});
+        }
+      } catch {
+        if (isMounted) {
+          setReadMessageIdsByChild({});
+        }
+      }
+    };
+
+    loadReadMessages();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, readMessagesStorageKey]);
 
   const refreshMessages = async ({ silent = false } = {}) => {
     if (!token) {
@@ -209,6 +243,12 @@ export function ParentHomeScreen({
   }, [openMessagesOnStart, onMessagesOpened]);
 
   useEffect(() => {
+    if (isMessagesVisible && selectedMessageChildId) {
+      markChildMessagesAsRead(selectedMessageChildId, messages);
+    }
+  }, [isMessagesVisible, selectedMessageChildId, messages]);
+
+  useEffect(() => {
     if (!token) {
       return undefined;
     }
@@ -226,6 +266,22 @@ export function ParentHomeScreen({
           ? currentMessages
           : [...currentMessages, message]
       ));
+    });
+
+    connection.on('RewardRequestCreated', (rewardRequest) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setRewardRequests((currentRequests) => upsertById(currentRequests, rewardRequest));
+    });
+
+    connection.on('RewardRequestUpdated', (rewardRequest) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setRewardRequests((currentRequests) => upsertById(currentRequests, rewardRequest));
     });
 
     connection.start().catch(() => {});
@@ -632,13 +688,40 @@ export function ParentHomeScreen({
     }
   };
 
+  const markChildMessagesAsRead = (childId, sourceMessages = messages) => {
+    if (!childId || !currentUserId) {
+      return;
+    }
+
+    const lastIncomingMessage = getLastIncomingConversationMessage(sourceMessages, currentUserId, childId);
+
+    if (!lastIncomingMessage?.id) {
+      return;
+    }
+
+    setReadMessageIdsByChild((currentIdsByChild) => {
+      const childKey = String(childId);
+
+      if (sameId(currentIdsByChild[childKey], lastIncomingMessage.id)) {
+        return currentIdsByChild;
+      }
+
+      const nextIdsByChild = {
+        ...currentIdsByChild,
+        [childKey]: lastIncomingMessage.id,
+      };
+
+      AsyncStorage.setItem(readMessagesStorageKey, JSON.stringify(nextIdsByChild)).catch(() => {});
+
+      return nextIdsByChild;
+    });
+  };
+
   const handleOpenMessages = (childId = null) => {
     refreshMessages({ silent: true });
     setSelectedMessageChildId(childId);
     if (childId) {
-      setReadMessageChildIds((currentIds) => (
-        currentIds.some((currentId) => sameId(currentId, childId)) ? currentIds : [...currentIds, childId]
-      ));
+      markChildMessagesAsRead(childId);
     }
     setIsMessagesVisible(true);
   };
@@ -673,9 +756,12 @@ export function ParentHomeScreen({
           <View style={styles.header}>
             <View style={styles.headerTextBox}>
               <Text style={styles.welcomeText}>Dobrodošli,</Text>
-              <Text style={styles.userName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-                {user?.name || 'Roditelj'} ??
-              </Text>
+              <View style={styles.userNameRow}>
+                <Text style={styles.userName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  {user?.name || 'Roditelj'}
+                </Text>
+                <WaveIcon />
+              </View>
               <Text style={styles.subText}>Drago nam je što ste tu!</Text>
             </View>
 
@@ -762,6 +848,7 @@ export function ParentHomeScreen({
         </ScrollView>
 
         <BottomNavigation
+          bottomInset={insets.bottom}
           onNavigateHome={onNavigateHome}
           onNavigateChildren={onNavigateToChildren}
           onNavigateRewards={onNavigateToRewards}
@@ -779,7 +866,7 @@ export function ParentHomeScreen({
             { label: 'Cekaju odobrenje', value: taskStats.pendingTasks, icon: icons.bell },
             { label: 'Završeni', value: taskStats.approvedTasks, icon: icons.checkCircle },
             { label: 'Otkazani', value: taskStats.rejectedTasks, icon: icons.chart },
-            { label: 'Osvojeni bodovi', value: taskStats.approvedPoints, icon: icons.star },
+            { label: 'Osvojeni bodovi', value: taskStats.approvedPoints, icon: icons.pointsStar },
             { label: 'Najviše uspješnih', value: formatChildStat(taskStats.mostSuccessfulChild, 'zad.'), icon: icons.trophy },
             { label: 'Najmanje uspješnih', value: formatChildStat(taskStats.leastSuccessfulChild, 'zad.'), icon: icons.user },
           ]}
@@ -802,7 +889,7 @@ export function ParentHomeScreen({
             { label: 'Odbijeni zahtjevi', value: rewardStats.rejectedRequests, icon: icons.chart },
             { label: 'Predložene cekaju', value: rewardStats.pendingSuggestions, icon: icons.bell },
             { label: 'Ukupna cijena aktivnih', value: rewardStats.totalRewardCost, icon: icons.chart },
-            { label: 'Prosjek bodova', value: rewardStats.averageRewardCost, icon: icons.star },
+            { label: 'Prosjek bodova', value: rewardStats.averageRewardCost, icon: icons.pointsStar },
             { label: 'Najviše osvojenih', value: formatChildStat(rewardStats.mostRewardedChild, 'nagr.'), image: rewardIconSources.picnic.image },
             { label: 'Najmanje osvojenih', value: formatChildStat(rewardStats.leastRewardedChild, 'nagr.'), icon: icons.user },
           ]}
@@ -839,7 +926,7 @@ export function ParentHomeScreen({
           children={children}
           messages={messages}
           selectedChild={selectedMessageChild}
-          readMessageChildIds={readMessageChildIds}
+          readMessageIdsByChild={readMessageIdsByChild}
           draft={messageDraft}
           isSending={isSendingMessage}
           onSelectChild={(child) => handleOpenMessages(child ? getChildUserId(child) : null)}
@@ -1144,7 +1231,19 @@ function RewardRequestReviewModal({ visible, request, reward, childName, isSubmi
   );
 }
 
-function ParentMessagesModal({ visible, currentUser, children, messages, selectedChild, readMessageChildIds, draft, isSending, onSelectChild, onDraftChange, onSend, onClose }) {
+function WaveIcon() {
+  return (
+    <View style={styles.waveIcon} pointerEvents="none">
+      <View style={styles.wavePalm} />
+      <View style={[styles.waveFinger, styles.waveFingerOne]} />
+      <View style={[styles.waveFinger, styles.waveFingerTwo]} />
+      <View style={[styles.waveFinger, styles.waveFingerThree]} />
+      <View style={styles.waveThumb} />
+    </View>
+  );
+}
+
+function ParentMessagesModal({ visible, currentUser, children, messages, selectedChild, readMessageIdsByChild, draft, isSending, onSelectChild, onDraftChange, onSend, onClose }) {
   const chatScrollRef = useRef(null);
   const currentUserId = currentUser?.id ?? currentUser?.userId;
   const selectedChildId = getChildUserId(selectedChild);
@@ -1181,7 +1280,7 @@ function ParentMessagesModal({ visible, currentUser, children, messages, selecte
               {children.map((child) => {
                 const childId = getChildUserId(child);
                 const lastMessage = getLastConversationMessage(messages, currentUserId, childId);
-                const hasUnreadMessage = isUnreadConversation(lastMessage, currentUserId, readMessageChildIds, childId);
+                const hasUnreadMessage = isUnreadConversation(lastMessage, currentUserId, readMessageIdsByChild, childId);
 
                 return (
                   <Pressable key={child.id} style={[styles.chatContactRow, hasUnreadMessage && styles.messageRowUnread]} onPress={() => onSelectChild?.(child)}>
@@ -1453,7 +1552,7 @@ function DashedButton({ label, icon, color, onPress }) {
   );
 }
 
-function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
+function BottomNavigation({ bottomInset, onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
   const items = [
     { label: 'Pocetna', icon: icons.home, active: true, onPress: onNavigateHome },
     { label: 'Djeca', icon: icons.user, onPress: onNavigateChildren },
@@ -1463,7 +1562,7 @@ function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateReward
   ];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { bottom: Math.max(bottomInset, 8), paddingBottom: 12 + Math.max(bottomInset - 8, 0) }]}>
       {items.map((item) => (
         <Pressable key={item.label} style={styles.navItem} onPress={() => item.onPress?.()}>
           <Icon source={item.icon} size={28} color={item.active ? '#0065ff' : '#46536c'} />
@@ -1480,6 +1579,18 @@ function Icon({ source, size, color }) {
 
 function isTaskStatus(status, numericValue, textValue) {
   return Number(status) === numericValue || status === textValue;
+}
+
+function upsertById(items, nextItem) {
+  if (!nextItem?.id) {
+    return items;
+  }
+
+  if (items.some((item) => sameId(item.id, nextItem.id))) {
+    return items.map((item) => (sameId(item.id, nextItem.id) ? nextItem : item));
+  }
+
+  return [...items, nextItem];
 }
 
 function isRewardSuggestionStatus(status, numericValue, textValue) {
@@ -1540,10 +1651,20 @@ function getLastConversationMessage(messages, firstUserId, secondUserId) {
     .sort((first, second) => new Date(second.sentAt) - new Date(first.sentAt))[0];
 }
 
-function isUnreadConversation(lastMessage, currentUserId, readChildIds, childId) {
+function getLastIncomingConversationMessage(messages, currentUserId, childId) {
+  return messages
+    .filter((message) => isConversationMessage(message, currentUserId, childId))
+    .filter((message) => !isSystemNotificationMessage(message))
+    .filter((message) => !sameId(message.senderId, currentUserId))
+    .sort((first, second) => new Date(second.sentAt) - new Date(first.sentAt))[0];
+}
+
+function isUnreadConversation(lastMessage, currentUserId, readMessageIdsByChild, childId) {
+  const lastReadMessageId = readMessageIdsByChild?.[String(childId)];
+
   return Boolean(lastMessage)
     && !sameId(lastMessage.senderId, currentUserId)
-    && !readChildIds.some((readChildId) => sameId(readChildId, childId));
+    && !sameId(lastReadMessageId, lastMessage.id);
 }
 
 function isSystemNotificationMessage(message) {
@@ -1601,7 +1722,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 },
   headerTextBox: { flex: 1, minWidth: 0, paddingRight: 12 },
   welcomeText: { color: '#4c5877', fontSize: 17, fontWeight: '700', marginBottom: 4 },
-  userName: { color: '#061e60', fontSize: 29, fontWeight: '800', lineHeight: 35 },
+  userNameRow: { flexDirection: 'row', alignItems: 'center', minWidth: 0 },
+  userName: { color: '#061e60', fontSize: 29, fontWeight: '800', lineHeight: 35, flexShrink: 1 },
+  waveIcon: { width: 30, height: 30, marginLeft: 8, transform: [{ rotate: '-10deg' }] },
+  wavePalm: { position: 'absolute', left: 8, top: 10, width: 16, height: 15, borderRadius: 8, backgroundColor: '#ffc64d', borderWidth: 1, borderColor: '#e0a11a' },
+  waveFinger: { position: 'absolute', width: 5, height: 13, borderRadius: 4, backgroundColor: '#ffd86b', borderWidth: 1, borderColor: '#e0a11a' },
+  waveFingerOne: { left: 7, top: 1, transform: [{ rotate: '-18deg' }] },
+  waveFingerTwo: { left: 13, top: 0 },
+  waveFingerThree: { left: 19, top: 3, transform: [{ rotate: '18deg' }] },
+  waveThumb: { position: 'absolute', left: 3, top: 14, width: 12, height: 6, borderRadius: 6, backgroundColor: '#ffd86b', borderWidth: 1, borderColor: '#e0a11a', transform: [{ rotate: '-35deg' }] },
   subText: { color: '#4c5877', fontSize: 15, fontWeight: '600', marginTop: 4 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   bellButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

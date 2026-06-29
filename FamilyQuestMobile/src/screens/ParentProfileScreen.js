@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { updateMyProfile } from '../services/profileService';
 import { getParentAvatarSource, parentAvatarOptions } from '../utils/parentAvatars';
@@ -23,6 +24,7 @@ export function ParentProfileScreen({
   onNavigateToMessages,
   onLogout,
 }) {
+  const insets = useSafeAreaInsets();
   const initialAvatar = useMemo(
     () => parentAvatarOptions.find((avatar) => avatar.key === user?.avatarKey) ?? parentAvatarOptions[0],
     [user?.avatarKey],
@@ -167,6 +169,7 @@ export function ParentProfileScreen({
         </ScrollView>
 
         <BottomNavigation
+          bottomInset={insets.bottom}
           onNavigateHome={onNavigateHome}
           onNavigateChildren={onNavigateToChildren}
           onNavigateRewards={onNavigateToRewards}
@@ -195,7 +198,7 @@ function PasswordInput({ value, onChangeText, isVisible, onToggleVisibility, pla
   );
 }
 
-function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages }) {
+function BottomNavigation({ bottomInset, onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages }) {
   const items = [
     { label: 'Pocetna', icon: icons.home, onPress: onNavigateHome },
     { label: 'Djeca', icon: icons.user, onPress: onNavigateChildren },
@@ -205,7 +208,7 @@ function BottomNavigation({ onNavigateHome, onNavigateChildren, onNavigateReward
   ];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { bottom: Math.max(bottomInset, 8), paddingBottom: 12 + Math.max(bottomInset - 8, 0) }]}>
       {items.map((item) => (
         <Pressable key={item.label} style={styles.navItem} onPress={() => item.onPress?.()}>
           <Icon source={item.icon} size={28} color={item.active ? '#0065ff' : '#46536c'} />

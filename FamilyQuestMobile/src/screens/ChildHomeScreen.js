@@ -4,6 +4,7 @@ import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getMyChildren } from '../services/childrenService';
 import { getMyMessages, sendMessage } from '../services/messageService';
@@ -91,6 +92,7 @@ const tabs = {
 };
 
 export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(tabs.home);
   const [isFontLoaded, setIsFontLoaded] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -183,6 +185,14 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
       ));
     });
 
+    connection.on('RewardRequestUpdated', (rewardRequest) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setRewardRequests((currentRequests) => upsertById(currentRequests, rewardRequest));
+    });
+
     connection.start().catch(() => {});
 
     return () => {
@@ -217,7 +227,15 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
     const approvedTasks = tasks.filter((task) => isTaskStatus(task.status, TASK_STATUSES.approved, 'Approved'));
     const pendingTasks = tasks.filter((task) => isTaskStatus(task.status, TASK_STATUSES.pendingApproval, 'PendingApproval')).length;
     const assignedTasks = tasks.filter((task) => isTaskStatus(task.status, TASK_STATUSES.assigned, 'Assigned')).length;
-    const approvedPoints = approvedTasks.reduce((total, task) => total + getTaskPoints(task), 0);
+    const earnedPoints = approvedTasks.reduce((total, task) => total + getTaskPoints(task), 0);
+    const reservedOrSpentPoints = rewardRequests
+      .filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.pending, 'Pending')
+        || isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'))
+      .reduce((total, request) => {
+        const reward = rewards.find((currentReward) => sameId(currentReward.id, request.rewardId));
+        return total + getRewardPoints(reward);
+      }, 0);
+    const approvedPoints = Math.max(earnedPoints - reservedOrSpentPoints, 0);
     const progress = tasks.length === 0 ? 0 : Math.round((approvedTasks.length / tasks.length) * 100);
     const affordableRewards = rewards.filter((reward) => reward.isActive !== false && getRewardPoints(reward) <= approvedPoints).length;
     const wonRewards = rewardRequests.filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved')).length;
@@ -741,6 +759,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
           onNotificationPress={handleNotificationPress}
         />
         <BottomNavigation
+          bottomInset={insets.bottom}
           activeTab={activeTab}
           onChangeTab={setActiveTab}
           onNavigateHome={onNavigateHome}
@@ -1263,7 +1282,7 @@ function ChildNotificationsModal({ visible, notifications, readNotificationIds, 
   );
 }
 
-function BottomNavigation({ activeTab, onChangeTab, onNavigateHome, onNavigateMessages }) {
+function BottomNavigation({ bottomInset, activeTab, onChangeTab, onNavigateHome, onNavigateMessages }) {
   const items = [
     { label: 'Početna', icon: icons.home, tab: tabs.home, onPress: onNavigateHome },
     { label: 'Zadaci', icon: icons.user, tab: tabs.tasks },
@@ -1273,7 +1292,7 @@ function BottomNavigation({ activeTab, onChangeTab, onNavigateHome, onNavigateMe
   ];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, { bottom: Math.max(bottomInset + 8, 14) }]}>
       {items.map((item) => {
         const isActive = item.tab ? activeTab === item.tab : false;
 
@@ -1312,6 +1331,18 @@ function ChildText({ style, ...props }) {
 
 function isTaskStatus(status, numericValue, textValue) {
   return Number(status) === numericValue || status === textValue;
+}
+
+function upsertById(items, nextItem) {
+  if (!nextItem?.id) {
+    return items;
+  }
+
+  if (items.some((item) => sameId(item.id, nextItem.id))) {
+    return items.map((item) => (sameId(item.id, nextItem.id) ? nextItem : item));
+  }
+
+  return [...items, nextItem];
 }
 
 function isRewardRequestStatus(status, numericValue, textValue) {
@@ -1524,8 +1555,8 @@ const styles = StyleSheet.create({
   rewardPointsList: { color: '#0b7f49', fontSize: 14 },
   rewardRequestText: { color: '#b97000', fontSize: 12, fontWeight: '900', marginTop: 10 },
   rewardLockedText: { color: '#52607b', fontSize: 12, fontWeight: '800', marginTop: 10 },
-  rewardButton: { minHeight: 38, borderRadius: 11, backgroundColor: '#0ca85d', alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-  rewardButtonList: { minWidth: 86, marginTop: 0, marginLeft: 10, paddingHorizontal: 12 },
+  rewardButton: { minHeight: 44, borderRadius: 13, backgroundColor: '#0ca85d', alignItems: 'center', justifyContent: 'center', marginTop: 12, paddingHorizontal: 18 },
+  rewardButtonList: { minWidth: 104, marginTop: 0, marginLeft: 10, paddingHorizontal: 18 },
   rewardButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '900' },
   suggestInputLabel: { color: '#052461', fontSize: 14, fontWeight: '900', marginBottom: 8, marginTop: 8 },
   suggestInput: { minHeight: 52, borderWidth: 1, borderColor: '#dce3ef', borderRadius: 13, paddingHorizontal: 15, color: '#071e60', fontSize: 16, fontWeight: '700', backgroundColor: '#fbfdff', marginBottom: 10 },

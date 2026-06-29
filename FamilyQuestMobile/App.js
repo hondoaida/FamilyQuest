@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 import { AddChildScreen } from './src/screens/AddChildScreen';
 import { ChildHomeScreen } from './src/screens/ChildHomeScreen';
 import { ChildrenScreen } from './src/screens/ChildrenScreen';
@@ -18,6 +20,10 @@ const routes = {
   parentProfile: 'parentProfile',
   register: 'register',
 };
+
+function WithSafeArea({ children }) {
+  return <SafeAreaProvider>{children}</SafeAreaProvider>;
+}
 
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState(routes.register);
@@ -95,12 +101,12 @@ export default function App() {
 
   if (currentRoute === routes.addChild) {
     const onBack = addChildReturnRoute === routes.children ? navigateToChildren : navigateToParentHome;
-    return <AddChildScreen token={authSession?.token} onBack={onBack} />;
+    return <WithSafeArea><AddChildScreen token={authSession?.token} onBack={onBack} /></WithSafeArea>;
   }
 
   if (currentRoute === routes.children) {
     return (
-      <ChildrenScreen
+      <WithSafeArea><ChildrenScreen
         token={authSession?.token}
         user={authSession?.user}
         onBack={navigateToParentHome}
@@ -111,17 +117,17 @@ export default function App() {
         onRewardsOpened={() => setOpenRewardsOnChildren(false)}
         onNavigateToProfile={navigateToParentProfile}
         onNavigateToMessages={navigateToMessages}
-      />
+      /></WithSafeArea>
     );
   }
 
   if (currentRoute === routes.childHome) {
-    return <ChildHomeScreen token={authSession?.token} user={authSession?.user} onNavigateHome={navigateToHome} onLogout={handleLogout} />;
+    return <WithSafeArea><ChildHomeScreen token={authSession?.token} user={authSession?.user} onNavigateHome={navigateToHome} onLogout={handleLogout} /></WithSafeArea>;
   }
 
   if (currentRoute === routes.parentHome) {
     return (
-      <ParentHomeScreen
+      <WithSafeArea><ParentHomeScreen
         token={authSession?.token}
         user={authSession?.user}
         onNavigateToAddChild={() => navigateToAddChild(routes.parentHome)}
@@ -131,13 +137,13 @@ export default function App() {
         onNavigateToProfile={navigateToParentProfile}
         openMessagesOnStart={openMessagesOnParentHome}
         onMessagesOpened={() => setOpenMessagesOnParentHome(false)}
-      />
+      /></WithSafeArea>
     );
   }
 
   if (currentRoute === routes.parentProfile) {
     return (
-      <ParentProfileScreen
+      <WithSafeArea><ParentProfileScreen
         token={authSession?.token}
         user={authSession?.user}
         onProfileUpdated={handleProfileUpdated}
@@ -146,14 +152,14 @@ export default function App() {
         onNavigateToRewards={navigateToRewards}
         onNavigateToMessages={navigateToMessages}
         onLogout={handleLogout}
-      />
+      /></WithSafeArea>
     );
   }
 
   if (currentRoute === routes.login) {
-    return <LoginScreen onNavigateToRegister={navigateToRegister} onLoginSuccess={handleLoginSuccess} />;
+    return <WithSafeArea><LoginScreen onNavigateToRegister={navigateToRegister} onLoginSuccess={handleLoginSuccess} /></WithSafeArea>;
   }
 
-  return <RegisterScreen onNavigateToLogin={navigateToLogin} />;
+  return <WithSafeArea><RegisterScreen onNavigateToLogin={navigateToLogin} /></WithSafeArea>;
 }
 
