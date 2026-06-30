@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddRewardModal } from '../components/AddRewardModal';
 import { AddTaskModal } from '../components/AddTaskModal';
 import { getMyChildren } from '../services/childrenService';
-import { getRewardRequests, REWARD_REQUEST_STATUSES } from '../services/rewardRequestService';
+import { getRewardRequests, REWARD_REQUEST_STATUSES, updateRewardRequestStatus } from '../services/rewardRequestService';
 import { createReward, getRewards, updateReward } from '../services/rewardService';
 import { getRewardSuggestions, REWARD_SUGGESTION_STATUSES, updateRewardSuggestionStatus } from '../services/rewardSuggestionService';
 import { createTask, getTasks, TASK_STATUSES, updateTaskStatus } from '../services/taskService';
@@ -116,8 +116,10 @@ export function ChildrenScreen({
   const [isLoadingRewardSuggestions, setIsLoadingRewardSuggestions] = useState(false);
   const [rewardSuggestionsError, setRewardSuggestionsError] = useState('');
   const [selectedRewardSuggestion, setSelectedRewardSuggestion] = useState(null);
+  const [selectedRewardRequest, setSelectedRewardRequest] = useState(null);
   const [selectedReward, setSelectedReward] = useState(null);
   const [reviewingSuggestionId, setReviewingSuggestionId] = useState(null);
+  const [reviewingRequestId, setReviewingRequestId] = useState(null);
   const [isUpdatingReward, setIsUpdatingReward] = useState(false);
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
   const [selectedChildProfile, setSelectedChildProfile] = useState(null);
@@ -327,10 +329,8 @@ export function ChildrenScreen({
   }, [selectedChild, tasks]);
 
   const approvedPoints = useMemo(
-    () => visibleAssignedTasks
-      .filter((task) => isTaskStatus(task.status, TASK_STATUSES.approved, 'Approved'))
-      .reduce((total, task) => total + getTaskPoints(task), 0),
-    [visibleAssignedTasks],
+    () => getAvailablePointsForChild(visibleAssignedTasks, rewardRequests, selectedChild ? getChildUserId(selectedChild) : null, rewards),
+    [rewardRequests, rewards, selectedChild, visibleAssignedTasks],
   );
 
   const visibleRewards = useMemo(() => {
@@ -397,6 +397,8 @@ export function ChildrenScreen({
         title: 'Zadatak čeka odobrenje',
         text: `${selectedChild?.childName ?? 'Dijete'} je poslalo dokaz za "${task.title}".`,
         date: task.submittedAt ?? task.dueDate,
+        actionType: 'task',
+        payload: task,
       }));
 
     const suggestionNotifications = visiblePendingRewardSuggestions.map((suggestion) => ({
@@ -405,6 +407,8 @@ export function ChildrenScreen({
       title: 'Nova predložena nagrada',
       text: `${selectedChild?.childName ?? 'Dijete'} predlaže "${suggestion.title}".`,
       date: suggestion.suggestedAt,
+      actionType: 'suggestion',
+      payload: suggestion,
     }));
 
     const requestNotifications = visiblePendingRewardRequests.map((request) => {
@@ -416,6 +420,8 @@ export function ChildrenScreen({
         title: 'Nagrada je zatražena',
         text: `${selectedChild?.childName ?? 'Dijete'} je zatražilo "${reward?.title || 'nagradu'}".`,
         date: request.requestDate,
+        actionType: 'rewardRequest',
+        payload: request,
       };
     });
 
@@ -500,6 +506,52 @@ export function ChildrenScreen({
       Alert.alert('Greška', error.message || 'Obrada prijedloga nagrade nije uspjela.');
     } finally {
       setReviewingSuggestionId(null);
+    }
+  };
+
+  const handleReviewRewardRequest = async ({ request, status }) => {
+    if (!token || !request) {
+      return;
+    }
+
+    setReviewingRequestId(request.id);
+    setRewardsError('');
+
+    try {
+      const updatedRequest = await updateRewardRequestStatus({
+        token,
+        requestId: request.id,
+        status,
+      });
+
+      setRewardRequests((currentRequests) => currentRequests.map((currentRequest) => (
+        currentRequest.id === request.id ? (updatedRequest ?? { ...currentRequest, status }) : currentRequest
+      )));
+
+      setSelectedRewardRequest(null);
+      Alert.alert(status === REWARD_REQUEST_STATUSES.approved ? 'Nagrada odobrena' : 'Zahtjev odbijen');
+    } catch (error) {
+      Alert.alert('Greška', error.message || 'Obrada zahtjeva za nagradu nije uspjela.');
+    } finally {
+      setReviewingRequestId(null);
+    }
+  };
+
+  const handleNotificationPress = (notification) => {
+    setIsNotificationsVisible(false);
+
+    if (notification.actionType === 'task') {
+      setSelectedTask(notification.payload);
+      return;
+    }
+
+    if (notification.actionType === 'suggestion') {
+      setSelectedRewardSuggestion(notification.payload);
+      return;
+    }
+
+    if (notification.actionType === 'rewardRequest') {
+      setSelectedRewardRequest(notification.payload);
     }
   };
 
@@ -616,7 +668,7 @@ export function ChildrenScreen({
                       <Image source={getChildAvatarSource(child.childAvatarKey, index)} style={styles.selectorAvatar} />
                       <View style={styles.selectorTextBox}>
                         <Text style={styles.selectorName}>{child.childName}</Text>
-                        <Text style={styles.selectorPoints}>{getApprovedPointsForChild(tasks, getChildUserId(child))} bodova</Text>
+                        <Text style={styles.selectorPoints}>{getAvailablePointsForChild(tasks, rewardRequests, getChildUserId(child), rewards)} bodova</Text>
                       </View>
                       <View style={[styles.selectCircle, isSelected && styles.selectCircleActive]}>
                         {isSelected ? <Icon source={icons.checkCircle} size={26} color="#ffffff" /> : null}
@@ -792,10 +844,12 @@ export function ChildrenScreen({
           visible={isRewardsListVisible}
           rewards={visibleRewards}
           suggestions={visiblePendingRewardSuggestions}
+          requests={visiblePendingRewardRequests}
           isLoading={isLoadingRewards}
           errorMessage={rewardsError}
           onClose={() => setIsRewardsListVisible(false)}
           onSuggestionPress={setSelectedRewardSuggestion}
+          onRequestPress={setSelectedRewardRequest}
           onRewardPress={setSelectedReward}
         />
         <EditRewardModal
@@ -812,10 +866,20 @@ export function ChildrenScreen({
           onClose={() => setSelectedRewardSuggestion(null)}
           onReview={handleReviewRewardSuggestion}
         />
+        <RewardRequestReviewModal
+          visible={Boolean(selectedRewardRequest)}
+          request={selectedRewardRequest}
+          reward={selectedRewardRequest ? visibleRewards.find((reward) => sameId(reward.id, selectedRewardRequest.rewardId)) : null}
+          childName={selectedChild?.childName}
+          isSubmitting={selectedRewardRequest ? reviewingRequestId === selectedRewardRequest.id : false}
+          onClose={() => setSelectedRewardRequest(null)}
+          onReview={handleReviewRewardRequest}
+        />
         <NotificationsModal
           visible={isNotificationsVisible}
           notifications={notifications}
           onClose={() => setIsNotificationsVisible(false)}
+          onNotificationPress={handleNotificationPress}
         />
         <ChildProfileEditModal
           visible={Boolean(selectedChildProfile)}
@@ -1139,6 +1203,63 @@ function RewardSuggestionReviewModal({ visible, suggestion, isSubmitting, onClos
   );
 }
 
+function RewardRequestReviewModal({ visible, request, reward, childName, isSubmitting, onClose, onReview }) {
+  if (!request) {
+    return null;
+  }
+
+  const rewardIcon = rewardIconSources[reward?.iconKey] ?? rewardIconSources.gamepad;
+  const canDecide = isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.pending, 'Pending');
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.rewardSuggestionModalCard}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Zahtjev nagrade</Text>
+            <Pressable onPress={onClose} hitSlop={10} disabled={isSubmitting}>
+              <Text style={styles.modalClose}>×</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.suggestionReviewRow}>
+            <View style={[styles.rewardListImageBox, { backgroundColor: reward?.color || rewardIcon.color }]}>
+              <Image source={reward?.image || rewardIcon.image} style={styles.rewardListImage} resizeMode="contain" />
+            </View>
+            <View style={styles.rewardListBody}>
+              <Text style={styles.rewardListTitle}>{reward?.title || reward?.name || 'Nagrada'}</Text>
+              <Text style={styles.rewardDueDate}>Dijete: {childName || 'Dijete'}</Text>
+              <Text style={styles.rewardDueDate}>Potrebni bodovi: {getRewardPoints(reward)}</Text>
+              <Text style={styles.rewardDueDate}>Poslano: {formatDate(request.requestDate)}</Text>
+            </View>
+          </View>
+
+          {canDecide ? (
+            <View style={styles.modalActionsRow}>
+              <Pressable
+                style={[styles.rejectButton, isSubmitting && styles.disabledButton]}
+                onPress={() => onReview?.({ request, status: REWARD_REQUEST_STATUSES.rejected })}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.rejectButtonText}>Odbij</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.approveButton, isSubmitting && styles.disabledButton]}
+                onPress={() => onReview?.({ request, status: REWARD_REQUEST_STATUSES.approved })}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.approveButtonText}>Odobri</Text>}
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.modalHint}>Ovaj zahtjev je već obrađen.</Text>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function EditRewardModal({ visible, reward, isSubmitting, onClose, onSubmit }) {
   const [rewardName, setRewardName] = useState('');
   const [points, setPoints] = useState('');
@@ -1310,7 +1431,7 @@ function EditRewardModal({ visible, reward, isSubmitting, onClose, onSubmit }) {
   );
 }
 
-function NotificationsModal({ visible, notifications, onClose }) {
+function NotificationsModal({ visible, notifications, onClose, onNotificationPress }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -1329,7 +1450,7 @@ function NotificationsModal({ visible, notifications, onClose }) {
           ) : (
             <ScrollView style={styles.notificationsList} showsVerticalScrollIndicator={false}>
               {notifications.map((notification) => (
-                <View key={notification.id} style={styles.notificationRow}>
+                <Pressable key={notification.id} style={styles.notificationRow} onPress={() => onNotificationPress?.(notification)}>
                   <View style={styles.notificationTypePill}>
                     <Text style={styles.notificationTypeText}>{notification.type}</Text>
                   </View>
@@ -1338,7 +1459,7 @@ function NotificationsModal({ visible, notifications, onClose }) {
                     <Text style={styles.notificationText}>{notification.text}</Text>
                     <Text style={styles.notificationTime}>{formatTime(notification.date)}</Text>
                   </View>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           )}
@@ -1466,7 +1587,7 @@ function TaskDetailsModal({ task, isUpdating, onClose, onApprove, onReject }) {
   );
 }
 
-function RewardsListModal({ visible, rewards, suggestions = [], isLoading, errorMessage, onClose, onSuggestionPress, onRewardPress }) {
+function RewardsListModal({ visible, rewards, suggestions = [], requests = [], isLoading, errorMessage, onClose, onSuggestionPress, onRequestPress, onRewardPress }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
@@ -1487,15 +1608,43 @@ function RewardsListModal({ visible, rewards, suggestions = [], isLoading, error
 
           {errorMessage ? <Text style={styles.taskErrorText}>{errorMessage}</Text> : null}
 
-          {!isLoading && rewards.length === 0 && suggestions.length === 0 ? (
+          {!isLoading && rewards.length === 0 && suggestions.length === 0 && requests.length === 0 ? (
             <View style={styles.taskStateBox}>
               <Text style={styles.emptyTitle}>Nema dodanih nagrada.</Text>
               <Text style={styles.emptyText}>Dodajte nagradu da bi se ovdje prikazala.</Text>
             </View>
           ) : null}
 
-          {rewards.length > 0 || suggestions.length > 0 ? (
+          {rewards.length > 0 || suggestions.length > 0 || requests.length > 0 ? (
             <ScrollView style={styles.rewardsModalList} showsVerticalScrollIndicator={false}>
+              {requests.map((request) => {
+                const reward = rewards.find((currentReward) => sameId(currentReward.id, request.rewardId));
+                const rewardIcon = rewardIconSources[reward?.iconKey] ?? rewardIconSources.gamepad;
+
+                return (
+                  <Pressable key={`request-${request.id}`} style={[styles.rewardListRow, styles.rewardRequestListRow]} onPress={() => onRequestPress?.(request)}>
+                    <View style={[styles.rewardListImageBox, { backgroundColor: reward?.color || rewardIcon.color }]}>
+                      <Image source={reward?.image || rewardIcon.image} style={styles.rewardListImage} resizeMode="contain" />
+                    </View>
+                    <View style={styles.rewardListBody}>
+                      <View style={styles.rewardSuggestionTitleRow}>
+                        <Text style={styles.rewardListTitle}>{reward?.title || reward?.name || 'Nagrada'}</Text>
+                        <View style={styles.requestBadgeInline}>
+                          <Text style={styles.newBadgeText}>Zahtjev</Text>
+                        </View>
+                      </View>
+                      <View style={styles.rewardPointsRow}>
+                        <Icon source={icons.star} size={17} color="#ffc20e" />
+                        <Text style={styles.rewardPoints}>{getRewardPoints(reward)} bodova</Text>
+                      </View>
+                      <Text style={styles.rewardDueDate}>Čeka odobrenje • {formatDate(request.requestDate)}</Text>
+                    </View>
+                    <View style={styles.suggestionBangSmall}>
+                      <Text style={styles.suggestionBangText}>!</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
               {suggestions.map((suggestion) => (
                 <Pressable key={`suggestion-${suggestion.id}`} style={[styles.rewardListRow, styles.rewardSuggestionListRow]} onPress={() => onSuggestionPress?.(suggestion)}>
                   <View style={[styles.rewardListImageBox, { backgroundColor: suggestion.color }]}>
@@ -1678,10 +1827,23 @@ function getTaskStatusLabel(status) {
   return getTaskStatusInfo(status).label;
 }
 
-function getApprovedPointsForChild(tasks, childId) {
-  return tasks
+function getAvailablePointsForChild(tasks, rewardRequests, childId, rewards) {
+  if (!childId) {
+    return 0;
+  }
+
+  const earnedPoints = tasks
     .filter((task) => sameId(task.childId, childId) && isTaskStatus(task.status, TASK_STATUSES.approved, 'Approved'))
     .reduce((total, task) => total + getTaskPoints(task), 0);
+
+  const spentPoints = rewardRequests
+    .filter((request) => sameId(request.childId, childId) && isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'))
+    .reduce((total, request) => {
+      const reward = rewards.find((currentReward) => sameId(currentReward.id, request.rewardId));
+      return total + getRewardPoints(reward);
+    }, 0);
+
+  return Math.max(earnedPoints - spentPoints, 0);
 }
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#edf5ff' },
@@ -1756,6 +1918,7 @@ const styles = StyleSheet.create({
   rewardSuggestionMeta: { color: '#ff354d', fontSize: 12, fontWeight: '900', marginTop: 5 },
   newBadge: { position: 'absolute', top: 7, left: 7, borderRadius: 999, backgroundColor: '#ff354d', paddingHorizontal: 8, paddingVertical: 3, zIndex: 2 },
   newBadgeInline: { borderRadius: 999, backgroundColor: '#ff354d', paddingHorizontal: 8, paddingVertical: 3 },
+  requestBadgeInline: { borderRadius: 999, backgroundColor: '#0065ff', paddingHorizontal: 8, paddingVertical: 3 },
   newBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   suggestionBang: { position: 'absolute', top: 7, right: 7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff3d9', borderWidth: 1, borderColor: '#ff354d', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   suggestionBangSmall: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#fff3d9', borderWidth: 1, borderColor: '#ff354d', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
@@ -1822,6 +1985,7 @@ const styles = StyleSheet.create({
   rewardsModalList: { maxHeight: 430 },
   rewardListRow: { minHeight: 86, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e0e8f4', borderRadius: 14, padding: 12, marginBottom: 10, backgroundColor: '#ffffff' },
   rewardSuggestionListRow: { borderColor: '#ffb4bd', backgroundColor: '#fff8f9' },
+  rewardRequestListRow: { borderColor: '#b9d4ff', backgroundColor: '#f7fbff' },
   rewardListImageBox: { width: 58, height: 58, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   rewardListImage: { width: 45, height: 45 },
   rewardListBody: { flex: 1, marginLeft: 14 },

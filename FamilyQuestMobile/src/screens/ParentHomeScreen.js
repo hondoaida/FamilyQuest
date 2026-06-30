@@ -468,18 +468,25 @@ export function ParentHomeScreen({
     const inactiveRewards = rewards.filter((reward) => reward.isActive === false);
     const approvedTaskItems = tasks
       .filter((task) => isTaskStatus(task.status, TASK_STATUSES.approved, 'Approved'));
-    const approvedPoints = approvedTaskItems
-      .reduce((total, task) => total + getTaskPoints(task), 0);
-    const pointsByChildId = children.reduce((result, child) => {
-      const childId = getChildUserId(child);
-      result[String(childId)] = approvedTaskItems
-        .filter((task) => sameId(task.childId, childId))
-        .reduce((total, task) => total + getTaskPoints(task), 0);
-      return result;
-    }, {});
     const pendingRewardRequestItems = rewardRequests.filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.pending, 'Pending'));
     const approvedRewardRequestItems = rewardRequests.filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'));
     const rejectedRewardRequestItems = rewardRequests.filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.rejected, 'Rejected'));
+    const pointsByChildId = children.reduce((result, child) => {
+      const childId = getChildUserId(child);
+      const earnedPoints = approvedTaskItems
+        .filter((task) => sameId(task.childId, childId))
+        .reduce((total, task) => total + getTaskPoints(task), 0);
+      const spentPoints = approvedRewardRequestItems
+        .filter((request) => sameId(request.childId, childId))
+        .reduce((total, request) => {
+          const reward = rewards.find((currentReward) => sameId(currentReward.id, request.rewardId));
+          return total + getRewardPoints(reward);
+        }, 0);
+
+      result[String(childId)] = Math.max(earnedPoints - spentPoints, 0);
+      return result;
+    }, {});
+    const approvedPoints = Object.values(pointsByChildId).reduce((total, childPoints) => total + childPoints, 0);
     const activeRequestRewardIds = rewardRequests
       .filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.pending, 'Pending') || isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'))
       .map((request) => String(request.rewardId));
@@ -536,6 +543,11 @@ export function ParentHomeScreen({
   const selectedMessageChild = useMemo(() => (
     children.find((child) => sameId(getChildUserId(child), selectedMessageChildId)) ?? null
   ), [children, selectedMessageChildId]);
+
+  const unreadMessageCount = useMemo(
+    () => getUnreadConversationCount(messages, children, currentUserId, readMessageIdsByChild),
+    [children, currentUserId, messages, readMessageIdsByChild],
+  );
 
   const notifications = useMemo(() => {
     const taskNotifications = tasks
@@ -849,6 +861,7 @@ export function ParentHomeScreen({
 
         <BottomNavigation
           bottomInset={insets.bottom}
+          unreadMessageCount={unreadMessageCount}
           onNavigateHome={onNavigateHome}
           onNavigateChildren={onNavigateToChildren}
           onNavigateRewards={onNavigateToRewards}
@@ -1552,12 +1565,12 @@ function DashedButton({ label, icon, color, onPress }) {
   );
 }
 
-function BottomNavigation({ bottomInset, onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
+function BottomNavigation({ bottomInset, unreadMessageCount = 0, onNavigateHome, onNavigateChildren, onNavigateRewards, onNavigateMessages, onNavigateProfile }) {
   const items = [
     { label: 'Pocetna', icon: icons.home, active: true, onPress: onNavigateHome },
     { label: 'Djeca', icon: icons.user, onPress: onNavigateChildren },
     { label: 'Nagrade', icon: icons.gift, onPress: onNavigateRewards },
-    { label: 'Poruke', icon: icons.chat, onPress: onNavigateMessages },
+    { label: 'Poruke', icon: icons.chat, onPress: onNavigateMessages, badgeCount: unreadMessageCount },
     { label: 'Profil', icon: icons.profile, onPress: onNavigateProfile },
   ];
 
@@ -1565,7 +1578,14 @@ function BottomNavigation({ bottomInset, onNavigateHome, onNavigateChildren, onN
     <View style={[styles.bottomNav, { bottom: Math.max(bottomInset, 8), paddingBottom: 12 + Math.max(bottomInset - 8, 0) }]}>
       {items.map((item) => (
         <Pressable key={item.label} style={styles.navItem} onPress={() => item.onPress?.()}>
-          <Icon source={item.icon} size={28} color={item.active ? '#0065ff' : '#46536c'} />
+          <View style={styles.navIconWrap}>
+            <Icon source={item.icon} size={28} color={item.active ? '#0065ff' : '#46536c'} />
+            {item.badgeCount > 0 ? (
+              <View style={styles.navMessageBadge}>
+                <Text style={styles.navMessageBadgeText}>{item.badgeCount > 9 ? '9+' : item.badgeCount}</Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={[styles.navLabel, item.active && styles.navLabelActive]}>{item.label}</Text>
         </Pressable>
       ))}
@@ -1657,6 +1677,19 @@ function getLastIncomingConversationMessage(messages, currentUserId, childId) {
     .filter((message) => !isSystemNotificationMessage(message))
     .filter((message) => !sameId(message.senderId, currentUserId))
     .sort((first, second) => new Date(second.sentAt) - new Date(first.sentAt))[0];
+}
+
+function getUnreadConversationCount(messages, children, currentUserId, readMessageIdsByChild) {
+  if (!currentUserId) {
+    return 0;
+  }
+
+  return children.filter((child) => {
+    const childId = getChildUserId(child);
+    const lastMessage = getLastConversationMessage(messages, currentUserId, childId);
+
+    return isUnreadConversation(lastMessage, currentUserId, readMessageIdsByChild, childId);
+  }).length;
 }
 
 function isUnreadConversation(lastMessage, currentUserId, readMessageIdsByChild, childId) {
@@ -1872,6 +1905,9 @@ const styles = StyleSheet.create({
   chatSendButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#0065ff', alignItems: 'center', justifyContent: 'center' },
   bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 12, minHeight: 82, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#e6edf7', backgroundColor: '#ffffff', flexDirection: 'row', justifyContent: 'space-around', shadowColor: '#0f2b5f', shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 8 },
   navItem: { alignItems: 'center', justifyContent: 'center', minWidth: 56 },
+  navIconWrap: { width: 34, height: 30, alignItems: 'center', justifyContent: 'center' },
+  navMessageBadge: { position: 'absolute', right: 0, top: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ff3d32', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#ffffff' },
+  navMessageBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
   navLabel: { color: '#46536c', fontSize: 12, marginTop: 4, fontWeight: '600' },
   navLabelActive: { color: '#0065ff' },
 });

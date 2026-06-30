@@ -228,14 +228,13 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
     const pendingTasks = tasks.filter((task) => isTaskStatus(task.status, TASK_STATUSES.pendingApproval, 'PendingApproval')).length;
     const assignedTasks = tasks.filter((task) => isTaskStatus(task.status, TASK_STATUSES.assigned, 'Assigned')).length;
     const earnedPoints = approvedTasks.reduce((total, task) => total + getTaskPoints(task), 0);
-    const reservedOrSpentPoints = rewardRequests
-      .filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.pending, 'Pending')
-        || isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'))
+    const spentPoints = rewardRequests
+      .filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved'))
       .reduce((total, request) => {
         const reward = rewards.find((currentReward) => sameId(currentReward.id, request.rewardId));
         return total + getRewardPoints(reward);
       }, 0);
-    const approvedPoints = Math.max(earnedPoints - reservedOrSpentPoints, 0);
+    const approvedPoints = Math.max(earnedPoints - spentPoints, 0);
     const progress = tasks.length === 0 ? 0 : Math.round((approvedTasks.length / tasks.length) * 100);
     const affordableRewards = rewards.filter((reward) => reward.isActive !== false && getRewardPoints(reward) <= approvedPoints).length;
     const wonRewards = rewardRequests.filter((request) => isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved')).length;
@@ -279,7 +278,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
   }, [activeTab, rewards, stats.approvedPoints]);
 
   const parentId = familyLinks[0]?.parentId;
-  const currentUserId = user?.id ?? user?.userId;
+  const currentUserId = getCurrentUserId(user);
   const readNotificationsStorageKey = `${READ_NOTIFICATIONS_STORAGE_PREFIX}:${currentUserId ?? 'anonymous'}`;
 
   useEffect(() => {
@@ -313,15 +312,13 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
 
   const notifications = useMemo(() => {
     const taskNotifications = tasks
-      .filter((task) => isTaskStatus(task.status, TASK_STATUSES.rejected, 'Rejected')
-        || isTaskStatus(task.status, TASK_STATUSES.pendingApproval, 'PendingApproval'))
+      .filter((task) => isTaskStatus(task.status, TASK_STATUSES.rejected, 'Rejected'))
       .map((task) => ({
-        id: `task-${task.id}`,
+        id: `task-${task.id}-${getStatusKey(task.status)}`,
+        legacyId: `task-${task.id}`,
         type: 'Zadatak',
-        title: isTaskStatus(task.status, TASK_STATUSES.rejected, 'Rejected') ? 'Zadatak je odbijen' : 'Zadatak čeka odobrenje',
-        text: isTaskStatus(task.status, TASK_STATUSES.rejected, 'Rejected')
-          ? `"${task.name}" možeš ponovo uraditi.`
-          : `"${task.name}" je poslan roditelju na pregled.`,
+        title: 'Zadatak je odbijen',
+        text: `"${task.name}" možeš ponovo uraditi.`,
         date: task.submittedAt ?? task.dueDate,
         actionType: 'task',
         payload: task,
@@ -334,7 +331,8 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
         const isApproved = isRewardRequestStatus(request.status, REWARD_REQUEST_STATUSES.approved, 'Approved');
 
         return {
-          id: `reward-request-${request.id}`,
+          id: `reward-request-${request.id}-${getStatusKey(request.status)}`,
+          legacyId: `reward-request-${request.id}`,
           type: 'Nagrada',
           title: isApproved ? 'Nagrada je odobrena' : 'Nagrada je odbijena',
           text: `"${reward?.name || 'Nagrada'}" ${isApproved ? 'je odobrena.' : 'nije odobrena.'}`,
@@ -361,7 +359,7 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
   }, [currentUserId, messages, rewardRequests, rewards, tasks]);
 
   const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !readNotificationIds.includes(notification.id)),
+    () => notifications.filter((notification) => !isNotificationRead(notification, readNotificationIds)),
     [notifications, readNotificationIds],
   );
 
@@ -378,11 +376,12 @@ export function ChildHomeScreen({ token, user, onNavigateHome, onLogout }) {
   };
 
   const handleOpenNotifications = () => {
+    markNotificationsAsRead(getNotificationReadIds(notifications));
     setIsNotificationsVisible(true);
   };
 
   const handleNotificationPress = (notification) => {
-    markNotificationsAsRead([notification.id]);
+    markNotificationsAsRead(getNotificationReadIds([notification]));
     setIsNotificationsVisible(false);
 
     if (notification.actionType === 'task') {
@@ -1254,7 +1253,7 @@ function ChildNotificationsModal({ visible, notifications, readNotificationIds, 
           ) : (
             <ScrollView style={styles.childNotificationsList} showsVerticalScrollIndicator={false}>
               {notifications.map((notification) => {
-                const isRead = readNotificationIds.includes(notification.id);
+                const isRead = isNotificationRead(notification, readNotificationIds);
 
                 return (
                   <Pressable
@@ -1400,6 +1399,25 @@ function getRewardPoints(reward) {
 
 function sameId(firstId, secondId) {
   return firstId != null && secondId != null && Number(firstId) === Number(secondId);
+}
+
+function getCurrentUserId(user) {
+  return user?.id ?? user?.userId ?? user?.childId ?? user?.email ?? user?.name;
+}
+
+function getStatusKey(status) {
+  return String(status ?? '').toLowerCase();
+}
+
+function getNotificationReadIds(notifications) {
+  return notifications.flatMap((notification) => (
+    notification.legacyId ? [notification.id, notification.legacyId] : [notification.id]
+  ));
+}
+
+function isNotificationRead(notification, readNotificationIds) {
+  return readNotificationIds.includes(notification.id)
+    || (notification.legacyId ? readNotificationIds.includes(notification.legacyId) : false);
 }
 
 function isConversationMessage(message, firstUserId, secondUserId) {

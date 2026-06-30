@@ -148,6 +148,22 @@ namespace FamilyQuestWebApi.Services
                 return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.Forbidden, "You can update only reward requests from your own child.");
             }
 
+            if (request.Status == global::RewardRequestStatus.Approved)
+            {
+                var reward = await _dbContext.Rewards.FindAsync(rewardRequest.RewardId);
+                var availablePoints = await GetAvailablePointsAsync(rewardRequest.ChildId);
+
+                if (reward == null)
+                {
+                    return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.NotFound, "Reward does not exist.");
+                }
+
+                if (availablePoints < reward.RequiredPoints)
+                {
+                    return ServiceResult<RewardRequestResponse>.Failure(ServiceErrorType.BadRequest, "Child does not have enough points for this reward.");
+                }
+            }
+
             rewardRequest.Status = request.Status;
             await _dbContext.SaveChangesAsync();
 
@@ -166,9 +182,9 @@ namespace FamilyQuestWebApi.Services
                 .Where(task => task.ChildId == childId && task.Status == FamilyQuestWebApi.Models.Entities.TaskStatus.Approved)
                 .SumAsync(task => task.Points);
 
-            var reservedOrSpentPoints = await _dbContext.RewardRequests
+            var spentPoints = await _dbContext.RewardRequests
                 .Where(request => request.ChildId == childId
-                    && (request.Status == global::RewardRequestStatus.Pending || request.Status == global::RewardRequestStatus.Approved))
+                    && request.Status == global::RewardRequestStatus.Approved)
                 .Join(
                     _dbContext.Rewards,
                     request => request.RewardId,
@@ -176,7 +192,7 @@ namespace FamilyQuestWebApi.Services
                     (request, reward) => reward.RequiredPoints)
                 .SumAsync();
 
-            return Math.Max(approvedPoints - reservedOrSpentPoints, 0);
+            return Math.Max(approvedPoints - spentPoints, 0);
         }
 
         private async Task<bool> CanAccessChildAsync(int childId)
