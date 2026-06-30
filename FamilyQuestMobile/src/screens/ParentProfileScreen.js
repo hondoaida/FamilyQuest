@@ -92,7 +92,7 @@ export function ParentProfileScreen({
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 178 + insets.bottom }]} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <Image source={getParentAvatarSource(selectedAvatar.key)} style={styles.heroAvatar} />
             <Text style={styles.title}>Profil roditelja</Text>
