@@ -87,7 +87,7 @@ builder.Services.AddScoped<IMeService, MeService>();
 
 
 var app = builder.Build();
-
+// TEST
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
